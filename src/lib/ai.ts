@@ -1,14 +1,19 @@
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam, ChatCompletionContentPart } from 'openai/resources/chat/completions';
 
 const openai = new OpenAI({
   apiKey: process.env.AI_API_KEY,
   baseURL: process.env.AI_API_BASE_URL + '/v1',
 });
 
-export interface ChatMessage {
+// 多模态消息内容类型（用于前端转换）
+export interface ChatMessageWithImages {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: ChatCompletionContentPart[];
 }
+
+// 使用 OpenAI SDK 的消息类型
+export type ChatMessage = ChatCompletionMessageParam;
 
 export interface ChatOptions {
   model: string;

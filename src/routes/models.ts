@@ -16,6 +16,18 @@ const defaultModels = [
     provider: 'anthropic',
     description: 'Claude Sonnet 4.5 推理模型，支持扩展思考',
   },
+  {
+    id: 'deepseek-v3-1-250821-thinking',
+    name: 'DeepSeek V3.1 Thinking',
+    provider: 'custom',
+    description: 'DeepSeek V3.1 推理模型',
+  },
+  {
+    id: 'doubao-pro-32k',
+    name: 'Doubao Pro 32K',
+    provider: 'custom',
+    description: '豆包 Pro 32K 模型',
+  },
 ];
 
 // 获取可用模型列表
