@@ -1,0 +1,15 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8686:3000"
+    environment:
+      - NODE_ENV=development
+      - AI_API_BASE_URL=${AI_API_BASE_URL}
+      - AI_API_KEY=${AI_API_KEY}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+    volumes:
+      - ./src:/app/src
+    restart: unless-stopped
