@@ -10,6 +10,7 @@ import { chatRouter } from './routes/chat.js';
 import { modelRouter } from './routes/models.js';
 import { uploadRouter } from './routes/upload.js';
 import { imagesRouter } from './routes/images.js';
+import { videosRouter } from './routes/videos.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,6 +49,7 @@ app.use('/api/chat', chatRouter);
 app.use('/api/models', modelRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/images', imagesRouter);
+app.use('/api/videos', videosRouter);
 
 // Error handling
 app.use(errorHandler);

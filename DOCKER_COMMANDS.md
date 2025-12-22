@@ -111,3 +111,9 @@ docker compose down --remove-orphans
 docker compose down
 docker compose up --build
 ```
+
+## 内网转发
+wsl hostname -I
+netsh interface portproxy delete v4tov4 listenport=8686 listenaddress=172.16.16.109
+netsh interface portproxy add v4tov4 listenport=8686 listenaddress=172.16.16.109 connectport=8686 connectaddress=172.22.226.220
+curl.exe http://172.16.16.109:8686/api/models
