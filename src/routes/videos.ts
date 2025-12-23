@@ -106,3 +106,71 @@ videosRouter.get('/generations/:taskId', async (req: Request, res: Response, nex
     next(error);
   }
 });
+
+// 创建角色请求验证
+const createCharacterSchema = z.object({
+  timestamps: z.string().min(1, '时间戳不能为空'), // 例如 '1,2' 表示视频的1～2秒
+  url: z.string().optional(), // 视频URL
+  from_task: z.string().optional(), // 任务ID
+}).refine(
+  (data) => data.url || data.from_task,
+  { message: 'url 和 from_task 必须提供其中一个' }
+);
+
+// Sora2 创建角色
+// POST /sora/v1/characters
+videosRouter.post('/characters', async (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+  try {
+    const { timestamps, url, from_task } = createCharacterSchema.parse(req.body);
+
+    console.log('\n========== Sora2 创建角色请求 ==========');
+    console.log('请求参数:', JSON.stringify({ timestamps, url, from_task }, null, 2));
+
+    // 构建请求体
+    const requestBody: Record<string, unknown> = {
+      timestamps,
+    };
+
+    if (url) {
+      requestBody.url = url;
+    }
+    if (from_task) {
+      requestBody.from_task = from_task;
+    }
+
+    // 调用 Sora2 API
+    const response = await fetch(`${SORA2_API_BASE}/sora/v1/characters`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.AI_API_KEY}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Sora2 创建角色 API 错误:', errorText);
+      throw new Error(`Sora2 创建角色 API 调用失败: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    const duration_ms = Date.now() - startTime;
+    console.log(`响应耗时: ${duration_ms}ms`);
+    console.log('响应结果:', JSON.stringify(data, null, 2));
+    console.log('==========================================\n');
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    const duration_ms = Date.now() - startTime;
+    console.error(`\n========== Sora2 创建角色错误 (${duration_ms}ms) ==========`);
+    console.error('错误信息:', error);
+    console.error('====================================================\n');
+    next(error);
+  }
+});
