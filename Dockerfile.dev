@@ -1,13 +1,22 @@
 FROM node:20-alpine
 
+# 安装 Prisma 需要的依赖
+RUN apk add --no-cache openssl openssl-dev libc6-compat
+
 WORKDIR /app
 
 COPY package*.json ./
 
 RUN npm ci
 
+COPY prisma ./prisma
+
+# 生成 Prisma Client
+RUN npx prisma generate
+
 COPY . .
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+# 启动时先运行数据库迁移，再启动服务
+CMD ["sh", "-c", "npx prisma db push && npm run dev"]

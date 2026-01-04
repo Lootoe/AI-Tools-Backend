@@ -11,6 +11,7 @@ import { modelRouter } from './routes/models.js';
 import { uploadRouter } from './routes/upload.js';
 import { imagesRouter } from './routes/images.js';
 import { videosRouter } from './routes/videos.js';
+import { scriptsRouter } from './routes/scripts.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -50,6 +51,7 @@ app.use('/api/models', modelRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/videos', videosRouter);
+app.use('/api/scripts', scriptsRouter);
 
 // Error handling
 app.use(errorHandler);

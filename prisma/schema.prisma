@@ -1,0 +1,87 @@
+// Prisma Schema for AI Tools
+// 使用 PostgreSQL 数据库
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 剧本
+model Script {
+  id           String      @id @default(cuid())
+  title        String
+  prompt       String?     // 生成剧本的提示词
+  content      String?     // 剧本内容
+  currentPhase String      @default("storyboard") // storyboard | video
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  characters   Character[]
+  episodes     Episode[]
+
+  @@map("scripts")
+}
+
+// 角色
+model Character {
+  id                  String   @id @default(cuid())
+  scriptId            String
+  name                String
+  description         String
+  videoUrl            String?  // sora2 生成的角色视频
+  thumbnailUrl        String?  // 缩略图
+  taskId              String?  // sora2 任务ID
+  status              String   @default("pending") // pending | generating | completed | failed
+  characterId         String?  // Sora2 角色ID
+  username            String?  // Sora2 角色用户名
+  permalink           String?  // Sora2 角色主页链接
+  profilePictureUrl   String?  // Sora2 角色头像URL
+  isCreatingCharacter Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+
+  @@map("characters")
+}
+
+// 剧集
+model Episode {
+  id            String   @id @default(cuid())
+  scriptId      String
+  episodeNumber Int
+  title         String
+  content       String   // 剧集内容
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  script      Script       @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  storyboards Storyboard[]
+
+  @@map("episodes")
+}
+
+// 分镜
+model Storyboard {
+  id                 String   @id @default(cuid())
+  episodeId          String
+  sceneNumber        Int
+  description        String
+  characterIds       String[] // 参与的角色ID数组
+  referenceImageUrls String[] // 参考图URL数组
+  videoUrl           String?  // sora2 生成的视频
+  thumbnailUrl       String?
+  taskId             String?  // sora2 任务ID
+  progress           String?  // 生成进度
+  aspectRatio        String?  @default("16:9") // 16:9 | 9:16
+  duration           String?  @default("10") // 10 | 15
+  status             String   @default("pending") // pending | generating | completed | failed
+  createdAt          DateTime @default(now())
+
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@map("storyboards")
+}
