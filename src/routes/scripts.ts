@@ -14,7 +14,9 @@ scriptsRouter.get('/', async (_req: Request, res: Response, next: NextFunction) 
         characters: true,
         episodes: {
           include: {
-            storyboards: true,
+            storyboards: {
+              orderBy: { sceneNumber: 'asc' },
+            },
           },
           orderBy: { episodeNumber: 'asc' },
         },
@@ -280,7 +282,7 @@ const updateStoryboardSchema = z.object({
   progress: z.string().nullable().optional(),
   aspectRatio: z.enum(['16:9', '9:16']).optional(),
   duration: z.enum(['10', '15']).optional(),
-  status: z.enum(['pending', 'generating', 'completed', 'failed']).optional(),
+  status: z.enum(['pending', 'queued', 'generating', 'completed', 'failed']).optional(),
 });
 
 scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards/:storyboardId', async (req: Request, res: Response, next: NextFunction) => {

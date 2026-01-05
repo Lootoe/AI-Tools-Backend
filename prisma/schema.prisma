@@ -78,7 +78,7 @@ model Storyboard {
   progress           String?  // 生成进度
   aspectRatio        String?  @default("16:9") // 16:9 | 9:16
   duration           String?  @default("10") // 10 | 15
-  status             String   @default("pending") // pending | generating | completed | failed
+  status             String   @default("pending") // pending | queued | generating | completed | failed
   createdAt          DateTime @default(now())
 
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)

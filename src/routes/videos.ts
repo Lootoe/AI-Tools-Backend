@@ -13,7 +13,7 @@ const videoGenerationSchema = z.object({
   model: z.literal('sora-2').default('sora-2'),
   aspect_ratio: z.enum(['16:9', '9:16']).default('9:16'),
   duration: z.enum(['10', '15']).default('10'),
-  private: z.boolean().default(true),
+  private: z.boolean().default(false),
   reference_image: z.string().optional(), // 参考图 URL
 });
 
@@ -114,20 +114,51 @@ const storyboardToVideoSchema = z.object({
   model: z.literal('sora-2').default('sora-2'),
   aspect_ratio: z.enum(['16:9', '9:16']).default('9:16'),
   duration: z.enum(['10', '15']).default('15'),
-  private: z.boolean().default(true),
+  private: z.boolean().default(false),
+  characterIds: z.array(z.string()).optional(), // 关联的角色ID数组
 });
 
 // 分镜生成视频
 videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, next: NextFunction) => {
   const startTime = Date.now();
   try {
-    const { prompt, model, aspect_ratio, duration, private: isPrivate } = storyboardToVideoSchema.parse(req.body);
+    const { prompt, model, aspect_ratio, duration, private: isPrivate, characterIds } = storyboardToVideoSchema.parse(req.body);
 
     console.log('\n========== 分镜生成视频请求 ==========');
-    console.log('请求参数:', JSON.stringify({ prompt, model, aspect_ratio, duration, private: isPrivate }, null, 2));
+    console.log('请求参数:', JSON.stringify({ prompt, model, aspect_ratio, duration, private: isPrivate, characterIds }, null, 2));
+
+    // 处理角色标记替换：将 <角色名> 替换为 <角色名>(@username) 
+    let processedPrompt = prompt;
+    
+    if (characterIds && characterIds.length > 0) {
+      // 查询关联的角色信息
+      const characters = await prisma.character.findMany({
+        where: {
+          id: { in: characterIds },
+          username: { not: null }, // 只查询已注册的角色
+        },
+        select: {
+          name: true,
+          username: true,
+        },
+      });
+
+      console.log('关联角色:', JSON.stringify(characters, null, 2));
+
+      // 遍历每个角色，替换脚本中的角色标记
+      for (const char of characters) {
+        if (char.username) {
+          // 匹配 <角色名> 并替换为 <角色名@username >（@username和空格在尖括号内）
+          const pattern = new RegExp(`<${char.name}>`, 'g');
+          processedPrompt = processedPrompt.replace(pattern, `<${char.name}@${char.username} >`);
+        }
+      }
+
+      console.log('处理后的 prompt:', processedPrompt);
+    }
 
     const requestBody = {
-      prompt,
+      prompt: processedPrompt,
       model,
       aspect_ratio,
       duration,
@@ -164,6 +195,99 @@ videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, ne
   } catch (error) {
     const duration_ms = Date.now() - startTime;
     console.error(`\n========== 分镜生成视频错误 (${duration_ms}ms) ==========`);
+    console.error('错误信息:', error);
+    console.error('====================================================\n');
+    next(error);
+  }
+});
+
+// Remix 视频请求验证
+const remixVideoSchema = z.object({
+  prompt: z.string().min(1, '提示词不能为空'),
+  model: z.literal('sora-2').default('sora-2'),
+  aspect_ratio: z.enum(['16:9', '9:16']).default('9:16'),
+  duration: z.enum(['10', '15']).default('15'),
+  private: z.boolean().default(false),
+  characterIds: z.array(z.string()).optional(),
+});
+
+// Remix 视频（基于已有视频生成后续内容）
+// POST /v1/videos/{task_id}/remix
+videosRouter.post('/remix/:taskId', async (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+  try {
+    const { taskId } = req.params;
+    const { prompt, model, aspect_ratio, duration, private: isPrivate, characterIds } = remixVideoSchema.parse(req.body);
+
+    console.log('\n========== Remix 视频请求 ==========');
+    console.log('基于任务ID:', taskId);
+    console.log('请求参数:', JSON.stringify({ prompt, model, aspect_ratio, duration, private: isPrivate, characterIds }, null, 2));
+
+    // 处理角色标记替换
+    let processedPrompt = prompt;
+    
+    if (characterIds && characterIds.length > 0) {
+      const characters = await prisma.character.findMany({
+        where: {
+          id: { in: characterIds },
+          username: { not: null },
+        },
+        select: {
+          name: true,
+          username: true,
+        },
+      });
+
+      console.log('关联角色:', JSON.stringify(characters, null, 2));
+
+      for (const char of characters) {
+        if (char.username) {
+          const pattern = new RegExp(`<${char.name}>`, 'g');
+          processedPrompt = processedPrompt.replace(pattern, `<${char.name}@${char.username} >`);
+        }
+      }
+
+      console.log('处理后的 prompt:', processedPrompt);
+    }
+
+    const requestBody = {
+      prompt: processedPrompt,
+      model,
+      aspect_ratio,
+      duration: parseInt(duration, 10), // remix API 需要整数类型
+      private: isPrivate,
+    };
+
+    // 调用 Sora2 Remix API
+    const response = await fetch(`${SORA2_API_BASE}/v1/videos/${taskId}/remix`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.AI_API_KEY}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Remix API 错误:', errorText);
+      throw new Error(`Remix API 调用失败: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    const duration_ms = Date.now() - startTime;
+    console.log(`响应耗时: ${duration_ms}ms`);
+    console.log('响应结果:', JSON.stringify(data, null, 2));
+    console.log('==========================================\n');
+
+    res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    const duration_ms = Date.now() - startTime;
+    console.error(`\n========== Remix 视频错误 (${duration_ms}ms) ==========`);
     console.error('错误信息:', error);
     console.error('====================================================\n');
     next(error);
