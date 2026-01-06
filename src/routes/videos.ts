@@ -116,16 +116,17 @@ const storyboardToVideoSchema = z.object({
   duration: z.enum(['10', '15']).default('15'),
   private: z.boolean().default(false),
   characterIds: z.array(z.string()).optional(), // 关联的角色ID数组
+  reference_images: z.array(z.string()).optional(), // 参考图URL数组
 });
 
 // 分镜生成视频
 videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, next: NextFunction) => {
   const startTime = Date.now();
   try {
-    const { prompt, model, aspect_ratio, duration, private: isPrivate, characterIds } = storyboardToVideoSchema.parse(req.body);
+    const { prompt, model, aspect_ratio, duration, private: isPrivate, characterIds, reference_images } = storyboardToVideoSchema.parse(req.body);
 
     console.log('\n========== 分镜生成视频请求 ==========');
-    console.log('请求参数:', JSON.stringify({ prompt, model, aspect_ratio, duration, private: isPrivate, characterIds }, null, 2));
+    console.log('请求参数:', JSON.stringify({ prompt, model, aspect_ratio, duration, private: isPrivate, characterIds, reference_images }, null, 2));
 
     // 处理角色标记替换：将 <角色名> 替换为 <角色名>(@username) 
     let processedPrompt = prompt;
@@ -157,13 +158,19 @@ videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, ne
       console.log('处理后的 prompt:', processedPrompt);
     }
 
-    const requestBody = {
+    const requestBody: Record<string, unknown> = {
       prompt: processedPrompt,
       model,
       aspect_ratio,
       duration,
       private: isPrivate,
     };
+
+    // 如果有参考图，添加到请求中（Sora2 API 使用 images 字段）
+    if (reference_images && reference_images.length > 0) {
+      requestBody.images = reference_images;
+      console.log('添加参考图:', reference_images);
+    }
 
     // 调用 Sora2 API
     const response = await fetch(`${SORA2_API_BASE}/v2/videos/generations`, {
@@ -209,6 +216,7 @@ const remixVideoSchema = z.object({
   duration: z.enum(['10', '15']).default('15'),
   private: z.boolean().default(false),
   characterIds: z.array(z.string()).optional(),
+  // remix 模式不支持参考图
 });
 
 // Remix 视频（基于已有视频生成后续内容）
@@ -250,13 +258,15 @@ videosRouter.post('/remix/:taskId', async (req: Request, res: Response, next: Ne
       console.log('处理后的 prompt:', processedPrompt);
     }
 
-    const requestBody = {
+    const requestBody: Record<string, unknown> = {
       prompt: processedPrompt,
       model,
       aspect_ratio,
       duration: parseInt(duration, 10), // remix API 需要整数类型
       private: isPrivate,
     };
+
+    // remix 模式不支持参考图
 
     // 调用 Sora2 Remix API
     const response = await fetch(`${SORA2_API_BASE}/v1/videos/${taskId}/remix`, {

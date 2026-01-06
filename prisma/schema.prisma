@@ -78,6 +78,7 @@ model Storyboard {
   progress           String?  // 生成进度
   aspectRatio        String?  @default("16:9") // 16:9 | 9:16
   duration           String?  @default("10") // 10 | 15
+  mode               String?  @default("normal") // normal | remix
   status             String   @default("pending") // pending | queued | generating | completed | failed
   createdAt          DateTime @default(now())
 
