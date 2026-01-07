@@ -169,6 +169,21 @@ scriptsRouter.delete('/:id', async (req: Request, res: Response, next: NextFunct
   }
 });
 
+// 批量删除剧本
+const batchDeleteSchema = z.object({
+  ids: z.array(z.string()).min(1, '至少选择一个剧本'),
+});
+
+scriptsRouter.post('/batch-delete', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { ids } = batchDeleteSchema.parse(req.body);
+    await prisma.script.deleteMany({ where: { id: { in: ids } } });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ============ 剧集 CRUD ============
 
 // 添加剧集
