@@ -2,7 +2,7 @@ services:
   api:
     build: .
     ports:
-      - "3000:3000"
+      - "8686:3000"
     environment:
       - NODE_ENV=production
       - AI_API_BASE_URL=${AI_API_BASE_URL}
