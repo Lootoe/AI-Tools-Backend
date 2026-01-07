@@ -11,10 +11,10 @@ scriptsRouter.get('/', async (_req: Request, res: Response, next: NextFunction) 
   try {
     const scripts = await prisma.script.findMany({
       include: {
-        characters: true,
         episodes: {
           include: {
             storyboards: {
+              include: { variants: { orderBy: { createdAt: 'asc' } } },
               orderBy: { sceneNumber: 'asc' },
             },
           },
@@ -23,6 +23,36 @@ scriptsRouter.get('/', async (_req: Request, res: Response, next: NextFunction) 
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // 迁移旧数据：将分镜的 videoUrl 等迁移到 variants
+    for (const script of scripts) {
+      for (const episode of script.episodes) {
+        for (const storyboard of episode.storyboards) {
+          // 如果分镜有 videoUrl 但没有 variants，创建一个副本
+          if (storyboard.videoUrl && storyboard.variants.length === 0) {
+            const variant = await prisma.storyboardVariant.create({
+              data: {
+                storyboardId: storyboard.id,
+                videoUrl: storyboard.videoUrl,
+                thumbnailUrl: storyboard.thumbnailUrl,
+                taskId: storyboard.taskId,
+                progress: storyboard.progress,
+                status: storyboard.status,
+              },
+            });
+            // 设置为当前选中
+            await prisma.storyboard.update({
+              where: { id: storyboard.id },
+              data: { activeVariantId: variant.id },
+            });
+            // 更新内存中的数据
+            storyboard.variants.push(variant);
+            storyboard.activeVariantId = variant.id;
+          }
+        }
+      }
+    }
+
     res.json({ success: true, data: scripts });
   } catch (error) {
     next(error);
@@ -36,10 +66,10 @@ scriptsRouter.get('/:id', async (req: Request, res: Response, next: NextFunction
     const script = await prisma.script.findUnique({
       where: { id },
       include: {
-        characters: true,
         episodes: {
           include: {
             storyboards: {
+              include: { variants: { orderBy: { createdAt: 'asc' } } },
               orderBy: { sceneNumber: 'asc' },
             },
           },
@@ -50,6 +80,31 @@ scriptsRouter.get('/:id', async (req: Request, res: Response, next: NextFunction
     if (!script) {
       return res.status(404).json({ success: false, error: '剧本不存在' });
     }
+
+    // 迁移旧数据：将分镜的 videoUrl 等迁移到 variants
+    for (const episode of script.episodes) {
+      for (const storyboard of episode.storyboards) {
+        if (storyboard.videoUrl && storyboard.variants.length === 0) {
+          const variant = await prisma.storyboardVariant.create({
+            data: {
+              storyboardId: storyboard.id,
+              videoUrl: storyboard.videoUrl,
+              thumbnailUrl: storyboard.thumbnailUrl,
+              taskId: storyboard.taskId,
+              progress: storyboard.progress,
+              status: storyboard.status,
+            },
+          });
+          await prisma.storyboard.update({
+            where: { id: storyboard.id },
+            data: { activeVariantId: variant.id },
+          });
+          storyboard.variants.push(variant);
+          storyboard.activeVariantId = variant.id;
+        }
+      }
+    }
+
     res.json({ success: true, data: script });
   } catch (error) {
     next(error);
@@ -69,7 +124,6 @@ scriptsRouter.post('/', async (req: Request, res: Response, next: NextFunction) 
     const script = await prisma.script.create({
       data,
       include: {
-        characters: true,
         episodes: { include: { storyboards: true } },
       },
     });
@@ -95,7 +149,6 @@ scriptsRouter.put('/:id', async (req: Request, res: Response, next: NextFunction
       where: { id },
       data,
       include: {
-        characters: true,
         episodes: { include: { storyboards: true } },
       },
     });
@@ -110,79 +163,6 @@ scriptsRouter.delete('/:id', async (req: Request, res: Response, next: NextFunct
   try {
     const { id } = req.params;
     await prisma.script.delete({ where: { id } });
-    res.json({ success: true });
-  } catch (error) {
-    next(error);
-  }
-});
-
-// ============ 角色 CRUD ============
-
-// 添加角色
-const createCharacterSchema = z.object({
-  name: z.string().min(1, '角色名不能为空'),
-  description: z.string().default(''),
-  videoUrl: z.string().optional(),
-  thumbnailUrl: z.string().optional(),
-  taskId: z.string().optional(),
-  characterId: z.string().optional(),
-  username: z.string().optional(),
-  permalink: z.string().optional(),
-  profilePictureUrl: z.string().optional(),
-});
-
-scriptsRouter.post('/:scriptId/characters', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { scriptId } = req.params;
-    const data = createCharacterSchema.parse(req.body);
-    const character = await prisma.character.create({
-      data: { ...data, scriptId },
-    });
-    res.json({ success: true, data: character });
-  } catch (error) {
-    next(error);
-  }
-});
-
-
-// 更新角色
-const updateCharacterSchema = z.object({
-  name: z.string().optional(),
-  description: z.string().optional(),
-  videoUrl: z.string().nullable().optional(),
-  thumbnailUrl: z.string().nullable().optional(),
-  taskId: z.string().nullable().optional(),
-  status: z.enum(['pending', 'generating', 'completed', 'failed']).optional(),
-  characterId: z.string().nullable().optional(),
-  username: z.string().nullable().optional(),
-  permalink: z.string().nullable().optional(),
-  profilePictureUrl: z.string().nullable().optional(),
-  isCreatingCharacter: z.boolean().optional(),
-});
-
-scriptsRouter.put('/:scriptId/characters/:characterId', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { characterId } = req.params;
-    console.log('更新角色请求:', { characterId, body: req.body });
-    const data = updateCharacterSchema.parse(req.body);
-    console.log('解析后的数据:', data);
-    const character = await prisma.character.update({
-      where: { id: characterId },
-      data,
-    });
-    console.log('更新后的角色:', character);
-    res.json({ success: true, data: character });
-  } catch (error) {
-    console.error('更新角色失败:', error);
-    next(error);
-  }
-});
-
-// 删除角色
-scriptsRouter.delete('/:scriptId/characters/:characterId', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { characterId } = req.params;
-    await prisma.character.delete({ where: { id: characterId } });
     res.json({ success: true });
   } catch (error) {
     next(error);
@@ -251,7 +231,6 @@ scriptsRouter.delete('/:scriptId/episodes/:episodeId', async (req: Request, res:
 const createStoryboardSchema = z.object({
   sceneNumber: z.number().int().positive(),
   description: z.string().default(''),
-  characterIds: z.array(z.string()).default([]),
   referenceImageUrls: z.array(z.string()).default([]),
   aspectRatio: z.enum(['16:9', '9:16']).default('16:9'),
   duration: z.enum(['10', '15']).default('10'),
@@ -263,6 +242,7 @@ scriptsRouter.post('/:scriptId/episodes/:episodeId/storyboards', async (req: Req
     const data = createStoryboardSchema.parse(req.body);
     const storyboard = await prisma.storyboard.create({
       data: { ...data, episodeId },
+      include: { variants: true },
     });
     res.json({ success: true, data: storyboard });
   } catch (error) {
@@ -274,7 +254,6 @@ scriptsRouter.post('/:scriptId/episodes/:episodeId/storyboards', async (req: Req
 const updateStoryboardSchema = z.object({
   sceneNumber: z.number().int().positive().optional(),
   description: z.string().optional(),
-  characterIds: z.array(z.string()).optional(),
   referenceImageUrls: z.array(z.string()).optional(),
   videoUrl: z.string().nullable().optional(),
   thumbnailUrl: z.string().nullable().optional(),
@@ -283,6 +262,7 @@ const updateStoryboardSchema = z.object({
   aspectRatio: z.enum(['16:9', '9:16']).optional(),
   duration: z.enum(['10', '15']).optional(),
   status: z.enum(['pending', 'queued', 'generating', 'completed', 'failed']).optional(),
+  activeVariantId: z.string().nullable().optional(),
 });
 
 scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards/:storyboardId', async (req: Request, res: Response, next: NextFunction) => {
@@ -292,6 +272,7 @@ scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards/:storyboardId', as
     const storyboard = await prisma.storyboard.update({
       where: { id: storyboardId },
       data,
+      include: { variants: true },
     });
     res.json({ success: true, data: storyboard });
   } catch (error) {
@@ -340,6 +321,101 @@ scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards-reorder', async (r
       )
     );
     
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+// ============ 分镜副本 CRUD ============
+
+// 创建分镜副本
+scriptsRouter.post('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/variants', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { storyboardId } = req.params;
+    const variant = await prisma.storyboardVariant.create({
+      data: { storyboardId },
+    });
+    
+    // 如果是第一个副本，自动设为当前选中
+    const storyboard = await prisma.storyboard.findUnique({
+      where: { id: storyboardId },
+      include: { variants: true },
+    });
+    if (storyboard && storyboard.variants.length === 1) {
+      await prisma.storyboard.update({
+        where: { id: storyboardId },
+        data: { activeVariantId: variant.id },
+      });
+    }
+    
+    res.json({ success: true, data: variant });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 更新分镜副本
+const updateVariantSchema = z.object({
+  videoUrl: z.string().nullable().optional(),
+  thumbnailUrl: z.string().nullable().optional(),
+  taskId: z.string().nullable().optional(),
+  progress: z.string().nullable().optional(),
+  status: z.enum(['pending', 'queued', 'generating', 'completed', 'failed']).optional(),
+});
+
+scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/variants/:variantId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { variantId } = req.params;
+    const data = updateVariantSchema.parse(req.body);
+    const variant = await prisma.storyboardVariant.update({
+      where: { id: variantId },
+      data,
+    });
+    res.json({ success: true, data: variant });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 删除分镜副本
+scriptsRouter.delete('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/variants/:variantId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { storyboardId, variantId } = req.params;
+    await prisma.storyboardVariant.delete({ where: { id: variantId } });
+    
+    // 如果删除的是当前选中的副本，自动选择第一个
+    const storyboard = await prisma.storyboard.findUnique({
+      where: { id: storyboardId },
+      include: { variants: { orderBy: { createdAt: 'asc' } } },
+    });
+    if (storyboard && storyboard.activeVariantId === variantId) {
+      await prisma.storyboard.update({
+        where: { id: storyboardId },
+        data: { activeVariantId: storyboard.variants[0]?.id || null },
+      });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 设置当前选中的副本
+const setActiveVariantSchema = z.object({
+  variantId: z.string(),
+});
+
+scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/active-variant', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { storyboardId } = req.params;
+    const { variantId } = setActiveVariantSchema.parse(req.body);
+    await prisma.storyboard.update({
+      where: { id: storyboardId },
+      data: { activeVariantId: variantId },
+    });
     res.json({ success: true });
   } catch (error) {
     next(error);

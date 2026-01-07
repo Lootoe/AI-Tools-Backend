@@ -20,32 +20,9 @@ model Script {
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
-  characters   Character[]
   episodes     Episode[]
 
   @@map("scripts")
-}
-
-// 角色
-model Character {
-  id                  String   @id @default(cuid())
-  scriptId            String
-  name                String
-  description         String
-  videoUrl            String?  // sora2 生成的角色视频
-  thumbnailUrl        String?  // 缩略图
-  taskId              String?  // sora2 任务ID
-  status              String   @default("pending") // pending | generating | completed | failed
-  characterId         String?  // Sora2 角色ID
-  username            String?  // Sora2 角色用户名
-  permalink           String?  // Sora2 角色主页链接
-  profilePictureUrl   String?  // Sora2 角色头像URL
-  isCreatingCharacter Boolean  @default(false)
-  createdAt           DateTime @default(now())
-
-  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
-
-  @@map("characters")
 }
 
 // 剧集
@@ -70,18 +47,36 @@ model Storyboard {
   episodeId          String
   sceneNumber        Int
   description        String
-  characterIds       String[] // 参与的角色ID数组
   referenceImageUrls String[] // 参考图URL数组
-  videoUrl           String?  // sora2 生成的视频
-  thumbnailUrl       String?
-  taskId             String?  // sora2 任务ID
-  progress           String?  // 生成进度
   aspectRatio        String?  @default("16:9") // 16:9 | 9:16
   duration           String?  @default("10") // 10 | 15
-  status             String   @default("pending") // pending | queued | generating | completed | failed
+  activeVariantId    String?  // 当前选中的副本ID
   createdAt          DateTime @default(now())
+  // 兼容旧数据
+  videoUrl           String?
+  thumbnailUrl       String?
+  taskId             String?
+  progress           String?
+  status             String   @default("pending")
 
-  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  episode  Episode             @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  variants StoryboardVariant[]
 
   @@map("storyboards")
+}
+
+// 分镜副本
+model StoryboardVariant {
+  id           String   @id @default(cuid())
+  storyboardId String
+  videoUrl     String?
+  thumbnailUrl String?
+  taskId       String?
+  progress     String?
+  status       String   @default("pending") // pending | queued | generating | completed | failed
+  createdAt    DateTime @default(now())
+
+  storyboard Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+
+  @@map("storyboard_variants")
 }
