@@ -436,3 +436,80 @@ scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/acti
     next(error);
   }
 });
+
+
+// ============ 角色 CRUD ============
+
+// 获取剧本的所有角色
+scriptsRouter.get('/:scriptId/characters', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId } = req.params;
+    const characters = await prisma.character.findMany({
+      where: { scriptId },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({ success: true, data: characters });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 创建角色
+const createCharacterSchema = z.object({
+  name: z.string().min(1, '角色名称不能为空'),
+  description: z.string().default(''),  // 允许空描述
+});
+
+scriptsRouter.post('/:scriptId/characters', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId } = req.params;
+
+    // 先验证剧本是否存在
+    const script = await prisma.script.findUnique({ where: { id: scriptId } });
+    if (!script) {
+      return res.status(404).json({ success: false, error: '剧本不存在' });
+    }
+
+    const data = createCharacterSchema.parse(req.body);
+    const character = await prisma.character.create({
+      data: { ...data, scriptId },
+    });
+    res.json({ success: true, data: character });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 更新角色
+const updateCharacterSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  designImageUrl: z.string().nullable().optional(),
+  thumbnailUrl: z.string().nullable().optional(),
+  status: z.enum(['pending', 'generating', 'completed', 'failed']).optional(),
+});
+
+scriptsRouter.put('/:scriptId/characters/:characterId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { characterId } = req.params;
+    const data = updateCharacterSchema.parse(req.body);
+    const character = await prisma.character.update({
+      where: { id: characterId },
+      data,
+    });
+    res.json({ success: true, data: character });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 删除角色
+scriptsRouter.delete('/:scriptId/characters/:characterId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { characterId } = req.params;
+    await prisma.character.delete({ where: { id: characterId } });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});

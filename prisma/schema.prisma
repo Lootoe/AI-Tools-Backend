@@ -21,6 +21,7 @@ model Script {
   updatedAt    DateTime    @updatedAt
 
   episodes     Episode[]
+  characters   Character[]
 
   @@map("scripts")
 }
@@ -79,4 +80,22 @@ model StoryboardVariant {
   storyboard Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
 
   @@map("storyboard_variants")
+}
+
+
+// 角色资产
+model Character {
+  id             String   @id @default(cuid())
+  scriptId       String
+  name           String
+  description    String   // 角色设定/信息
+  designImageUrl String?  // 角色设计稿图片URL
+  thumbnailUrl   String?  // 缩略图
+  status         String   @default("pending") // pending | generating | completed | failed
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+
+  @@map("characters")
 }
