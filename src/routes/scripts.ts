@@ -278,6 +278,10 @@ const updateStoryboardSchema = z.object({
   duration: z.enum(['10', '15']).optional(),
   status: z.enum(['pending', 'queued', 'generating', 'completed', 'failed']).optional(),
   activeVariantId: z.string().nullable().optional(),
+  // 关联资产ID数组
+  linkedCharacterIds: z.array(z.string()).optional(),
+  linkedSceneIds: z.array(z.string()).optional(),
+  linkedPropIds: z.array(z.string()).optional(),
 });
 
 scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards/:storyboardId', async (req: Request, res: Response, next: NextFunction) => {

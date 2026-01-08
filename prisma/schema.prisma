@@ -55,6 +55,10 @@ model Storyboard {
   duration           String?  @default("10") // 10 | 15
   activeVariantId    String?  // 当前选中的副本ID
   createdAt          DateTime @default(now())
+  // 关联资产ID数组
+  linkedCharacterIds String[] // 关联的角色ID数组
+  linkedSceneIds     String[] // 关联的场景ID数组
+  linkedPropIds      String[] // 关联的物品ID数组
   // 兼容旧数据
   videoUrl           String?
   thumbnailUrl       String?
