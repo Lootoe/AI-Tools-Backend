@@ -325,7 +325,7 @@ const reorderStoryboardsSchema = z.object({
 scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards-reorder', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { storyboardIds } = reorderStoryboardsSchema.parse(req.body);
-    
+
     // 批量更新 sceneNumber
     await Promise.all(
       storyboardIds.map((id, index) =>
@@ -335,7 +335,7 @@ scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards-reorder', async (r
         })
       )
     );
-    
+
     res.json({ success: true });
   } catch (error) {
     next(error);
@@ -352,7 +352,7 @@ scriptsRouter.post('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/var
     const variant = await prisma.storyboardVariant.create({
       data: { storyboardId },
     });
-    
+
     // 如果是第一个副本，自动设为当前选中
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
@@ -364,7 +364,7 @@ scriptsRouter.post('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/var
         data: { activeVariantId: variant.id },
       });
     }
-    
+
     res.json({ success: true, data: variant });
   } catch (error) {
     next(error);
@@ -399,7 +399,7 @@ scriptsRouter.delete('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/v
   try {
     const { storyboardId, variantId } = req.params;
     await prisma.storyboardVariant.delete({ where: { id: variantId } });
-    
+
     // 如果删除的是当前选中的副本，自动选择第一个
     const storyboard = await prisma.storyboard.findUnique({
       where: { id: storyboardId },
@@ -411,7 +411,7 @@ scriptsRouter.delete('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/v
         data: { activeVariantId: storyboard.variants[0]?.id || null },
       });
     }
-    
+
     res.json({ success: true });
   } catch (error) {
     next(error);
@@ -508,6 +508,158 @@ scriptsRouter.delete('/:scriptId/characters/:characterId', async (req: Request, 
   try {
     const { characterId } = req.params;
     await prisma.character.delete({ where: { id: characterId } });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============ 场景 CRUD ============
+
+// 获取剧本的所有场景
+scriptsRouter.get('/:scriptId/scenes', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId } = req.params;
+    const scenes = await prisma.scene.findMany({
+      where: { scriptId },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({ success: true, data: scenes });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 创建场景
+const createSceneSchema = z.object({
+  name: z.string().min(1, '场景名称不能为空'),
+  description: z.string().default(''),
+});
+
+scriptsRouter.post('/:scriptId/scenes', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId } = req.params;
+
+    // 先验证剧本是否存在
+    const script = await prisma.script.findUnique({ where: { id: scriptId } });
+    if (!script) {
+      return res.status(404).json({ success: false, error: '剧本不存在' });
+    }
+
+    const data = createSceneSchema.parse(req.body);
+    const scene = await prisma.scene.create({
+      data: { ...data, scriptId },
+    });
+    res.json({ success: true, data: scene });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 更新场景
+const updateSceneSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  designImageUrl: z.string().nullable().optional(),
+  thumbnailUrl: z.string().nullable().optional(),
+  status: z.enum(['pending', 'generating', 'completed', 'failed']).optional(),
+});
+
+scriptsRouter.put('/:scriptId/scenes/:sceneId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { sceneId } = req.params;
+    const data = updateSceneSchema.parse(req.body);
+    const scene = await prisma.scene.update({
+      where: { id: sceneId },
+      data,
+    });
+    res.json({ success: true, data: scene });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 删除场景
+scriptsRouter.delete('/:scriptId/scenes/:sceneId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { sceneId } = req.params;
+    await prisma.scene.delete({ where: { id: sceneId } });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============ 物品 CRUD ============
+
+// 获取剧本的所有物品
+scriptsRouter.get('/:scriptId/props', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId } = req.params;
+    const props = await prisma.prop.findMany({
+      where: { scriptId },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({ success: true, data: props });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 创建物品
+const createPropSchema = z.object({
+  name: z.string().min(1, '物品名称不能为空'),
+  description: z.string().default(''),
+});
+
+scriptsRouter.post('/:scriptId/props', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId } = req.params;
+
+    // 先验证剧本是否存在
+    const script = await prisma.script.findUnique({ where: { id: scriptId } });
+    if (!script) {
+      return res.status(404).json({ success: false, error: '剧本不存在' });
+    }
+
+    const data = createPropSchema.parse(req.body);
+    const prop = await prisma.prop.create({
+      data: { ...data, scriptId },
+    });
+    res.json({ success: true, data: prop });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 更新物品
+const updatePropSchema = z.object({
+  name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  designImageUrl: z.string().nullable().optional(),
+  thumbnailUrl: z.string().nullable().optional(),
+  status: z.enum(['pending', 'generating', 'completed', 'failed']).optional(),
+});
+
+scriptsRouter.put('/:scriptId/props/:propId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { propId } = req.params;
+    const data = updatePropSchema.parse(req.body);
+    const prop = await prisma.prop.update({
+      where: { id: propId },
+      data,
+    });
+    res.json({ success: true, data: prop });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 删除物品
+scriptsRouter.delete('/:scriptId/props/:propId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { propId } = req.params;
+    await prisma.prop.delete({ where: { id: propId } });
     res.json({ success: true });
   } catch (error) {
     next(error);

@@ -22,6 +22,8 @@ model Script {
 
   episodes     Episode[]
   characters   Character[]
+  scenes       Scene[]
+  props        Prop[]
 
   @@map("scripts")
 }
@@ -98,4 +100,38 @@ model Character {
   script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
 
   @@map("characters")
+}
+
+// 场景资产
+model Scene {
+  id             String   @id @default(cuid())
+  scriptId       String
+  name           String
+  description    String   // 场景设定/信息
+  designImageUrl String?  // 场景设计稿图片URL
+  thumbnailUrl   String?  // 缩略图
+  status         String   @default("pending") // pending | generating | completed | failed
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+
+  @@map("scenes")
+}
+
+// 物品资产
+model Prop {
+  id             String   @id @default(cuid())
+  scriptId       String
+  name           String
+  description    String   // 物品设定/信息
+  designImageUrl String?  // 物品设计稿图片URL
+  thumbnailUrl   String?  // 缩略图
+  status         String   @default("pending") // pending | generating | completed | failed
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+
+  @@map("props")
 }
