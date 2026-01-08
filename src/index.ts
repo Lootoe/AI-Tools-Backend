@@ -11,6 +11,7 @@ import { uploadRouter } from './routes/upload.js';
 import { imagesRouter } from './routes/images.js';
 import { videosRouter } from './routes/videos.js';
 import { scriptsRouter } from './routes/scripts.js';
+import { resumePendingPolls, stopAllPolling } from './lib/videoStatusPoller.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -64,6 +65,22 @@ app.use((_, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+
+  // 启动时恢复未完成的视频轮询任务
+  resumePendingPolls();
+});
+
+// 优雅关闭
+process.on('SIGTERM', () => {
+  console.log('收到 SIGTERM 信号，正在关闭...');
+  stopAllPolling();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('收到 SIGINT 信号，正在关闭...');
+  stopAllPolling();
+  process.exit(0);
 });
 
 export default app;

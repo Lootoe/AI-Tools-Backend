@@ -349,6 +349,22 @@ scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards-reorder', async (r
 
 // ============ 分镜副本 CRUD ============
 
+// 获取单个分镜副本
+scriptsRouter.get('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/variants/:variantId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { variantId } = req.params;
+    const variant = await prisma.storyboardVariant.findUnique({
+      where: { id: variantId },
+    });
+    if (!variant) {
+      return res.status(404).json({ success: false, error: '副本不存在' });
+    }
+    res.json({ success: true, data: variant });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // 创建分镜副本
 scriptsRouter.post('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/variants', async (req: Request, res: Response, next: NextFunction) => {
   try {

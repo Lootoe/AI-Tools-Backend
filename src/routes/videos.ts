@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { startPolling } from '../lib/videoStatusPoller.js';
 
 export const videosRouter = Router();
 
@@ -22,9 +23,6 @@ videosRouter.post('/generations', async (req: Request, res: Response, next: Next
   try {
     const { prompt, model, aspect_ratio, duration, private: isPrivate, reference_image } = videoGenerationSchema.parse(req.body);
 
-    console.log('\n========== Sora2 视频生成请求 ==========');
-    console.log('请求参数:', JSON.stringify({ prompt, model, aspect_ratio, duration, private: isPrivate, reference_image }, null, 2));
-
     // 构建请求体
     const requestBody: Record<string, unknown> = {
       prompt,
@@ -38,6 +36,9 @@ videosRouter.post('/generations', async (req: Request, res: Response, next: Next
     if (reference_image) {
       requestBody.reference_image = reference_image;
     }
+
+    console.log('\n========== Sora2 视频生成 ==========');
+    console.log('发送请求体:', JSON.stringify(requestBody, null, 2));
 
     // 调用 Sora2 API
     const response = await fetch(`${SORA2_API_BASE}/v2/videos/generations`, {
@@ -60,7 +61,7 @@ videosRouter.post('/generations', async (req: Request, res: Response, next: Next
     const duration_ms = Date.now() - startTime;
     console.log(`响应耗时: ${duration_ms}ms`);
     console.log('响应结果:', JSON.stringify(data, null, 2));
-    console.log('==========================================\n');
+    console.log('====================================\n');
 
     res.json({
       success: true,
@@ -75,14 +76,12 @@ videosRouter.post('/generations', async (req: Request, res: Response, next: Next
   }
 });
 
-// 查询视频生成状态
+// 查询视频生成状态（前端轮询用，不触发后端轮询）
 // GET /v2/videos/generations/{task_id}
 // status 枚举: NOT_START | IN_PROGRESS | SUCCESS | FAILURE
 videosRouter.get('/generations/:taskId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { taskId } = req.params;
-
-    console.log(`\n========== 查询视频任务状态: ${taskId} ==========`);
 
     const response = await fetch(`${SORA2_API_BASE}/v2/videos/generations/${taskId}`, {
       method: 'GET',
@@ -98,8 +97,6 @@ videosRouter.get('/generations/:taskId', async (req: Request, res: Response, nex
     }
 
     const data = await response.json();
-    console.log('任务状态:', JSON.stringify(data, null, 2));
-    console.log('================================================\n');
 
     res.json({ success: true, data });
   } catch (error) {
@@ -128,6 +125,7 @@ const storyboardToVideoSchema = z.object({
   private: z.boolean().default(false),
   reference_images: z.array(z.string()).optional(), // 参考图URL数组
   linked_assets: linkedAssetsSchema.optional(), // 关联资产信息
+  variantId: z.string().optional(), // 分镜副本ID，用于后端轮询更新状态
 });
 
 // 构建参考图映射表文案
@@ -183,10 +181,7 @@ function buildReferenceMapPrompt(linkedAssets: z.infer<typeof linkedAssetsSchema
 videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, next: NextFunction) => {
   const startTime = Date.now();
   try {
-    const { prompt, model, aspect_ratio, duration, private: isPrivate, reference_images, linked_assets } = storyboardToVideoSchema.parse(req.body);
-
-    console.log('\n========== 分镜生成视频请求 ==========');
-    console.log('请求参数:', JSON.stringify({ prompt, model, aspect_ratio, duration, private: isPrivate, reference_images, linked_assets }, null, 2));
+    const { prompt, model, aspect_ratio, duration, private: isPrivate, reference_images, linked_assets, variantId } = storyboardToVideoSchema.parse(req.body);
 
     // 构建最终的 images 数组：按角色、场景、物品的顺序添加关联资产图片
     const finalImages: string[] = [];
@@ -229,10 +224,10 @@ videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, ne
     // 如果有参考图，添加到请求中（Sora2 API 使用 images 字段）
     if (finalImages.length > 0) {
       requestBody.images = finalImages;
-      console.log('添加参考图:', finalImages);
     }
 
-    console.log('最终 prompt:', finalPrompt);
+    console.log('\n========== 分镜生成视频 ==========');
+    console.log('发送请求体:', JSON.stringify(requestBody, null, 2));
 
     // 调用 Sora2 API
     const response = await fetch(`${SORA2_API_BASE}/v2/videos/generations`, {
@@ -255,7 +250,13 @@ videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, ne
     const duration_ms = Date.now() - startTime;
     console.log(`响应耗时: ${duration_ms}ms`);
     console.log('响应结果:', JSON.stringify(data, null, 2));
-    console.log('==========================================\n');
+    console.log('==================================\n');
+
+    // 如果有 variantId 且获取到 taskId，启动后端轮询
+    const taskId = data.task_id || data.id;
+    if (variantId && taskId) {
+      startPolling(taskId, variantId);
+    }
 
     res.json({
       success: true,
@@ -268,4 +269,18 @@ videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, ne
     console.error('====================================================\n');
     next(error);
   }
+});
+
+// 获取当前轮询状态（调试用）
+import { getPollingStatus } from '../lib/videoStatusPoller.js';
+
+videosRouter.get('/polling/status', async (_req: Request, res: Response) => {
+  const status = getPollingStatus();
+  res.json({
+    success: true,
+    data: {
+      activePolls: status.length,
+      tasks: status,
+    },
+  });
 });
