@@ -2,11 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 
 // 允许的 AI 模型白名单
 const ALLOWED_MODELS = new Set([
-    // 文本/对话模型
-    'gpt-5.1-thinking',
-    'claude-sonnet-4-5-20250929-thinking',
-    'deepseek-v3-1-250821-thinking',
-    'doubao-pro-32k',
     // 图像生成模型
     'nano-banana-2',
     'doubao-image',
