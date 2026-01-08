@@ -6,10 +6,8 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 
 import { errorHandler } from './middleware/errorHandler.js';
-import { chatRouter } from './routes/chat.js';
 import { modelRouter } from './routes/models.js';
 import { uploadRouter } from './routes/upload.js';
-import { imagesRouter } from './routes/images.js';
 import { videosRouter } from './routes/videos.js';
 import { scriptsRouter } from './routes/scripts.js';
 
@@ -46,10 +44,8 @@ app.get('/health', (_, res) => {
 });
 
 // API routes
-app.use('/api/chat', chatRouter);
 app.use('/api/models', modelRouter);
 app.use('/api/upload', uploadRouter);
-app.use('/api/images', imagesRouter);
 app.use('/api/videos', videosRouter);
 app.use('/api/scripts', scriptsRouter);
 
