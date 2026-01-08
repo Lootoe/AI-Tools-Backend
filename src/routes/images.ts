@@ -17,7 +17,7 @@ const textToImageSchema = z.object({
   positiveTags: z.array(z.string()).default([]),
   negativeTags: z.array(z.string()).default([]),
   aspect_ratio: z.enum(ASPECT_RATIOS).default('1:1'),
-  image_size: z.enum(IMAGE_SIZES).optional(), // 仅 nano-banana-2 系列支持
+  image_size: z.enum(IMAGE_SIZES).optional(),
   response_format: z.enum(['url', 'b64_json']).default('url'),
 });
 
@@ -29,7 +29,7 @@ const imageToImageSchema = z.object({
   negativeTags: z.array(z.string()).default([]),
   image: z.array(z.string()).min(1, '参考图不能为空'),
   aspect_ratio: z.enum(ASPECT_RATIOS).default('1:1'),
-  image_size: z.enum(IMAGE_SIZES).optional(), // 仅 nano-banana-2 系列支持
+  image_size: z.enum(IMAGE_SIZES).optional(),
   response_format: z.enum(['url', 'b64_json']).default('url'),
 });
 
@@ -58,10 +58,9 @@ imagesRouter.post('/generations', async (req: Request, res: Response, next: Next
     const fullPrompt = buildPrompt(prompt, positiveTags, negativeTags);
 
     if (!fullPrompt) {
-      return res.status(400).json({ error: '请输入提示词或选择标签' });
+      return res.status(400).json({ success: false, error: '请输入提示词或选择标签' });
     }
 
-    // 构建发送给AI的请求参数
     const aiRequestParams: Record<string, unknown> = {
       model,
       prompt: fullPrompt,
@@ -69,7 +68,6 @@ imagesRouter.post('/generations', async (req: Request, res: Response, next: Next
       response_format,
     };
 
-    // 根据模型类型设置清晰度字段
     if (image_size) {
       if (model.includes('nano-banana-2')) {
         aiRequestParams.image_size = image_size;
@@ -86,7 +84,6 @@ imagesRouter.post('/generations', async (req: Request, res: Response, next: Next
 
     const duration = Date.now() - startTime;
     console.log(`响应耗时: ${duration}ms`);
-    console.log('响应结果:', JSON.stringify(response, null, 2));
     console.log('================================\n');
 
     res.json({
@@ -106,6 +103,7 @@ imagesRouter.post('/generations', async (req: Request, res: Response, next: Next
   }
 });
 
+
 // 图生图
 imagesRouter.post('/edits', async (req: Request, res: Response, next: NextFunction) => {
   const startTime = Date.now();
@@ -114,10 +112,9 @@ imagesRouter.post('/edits', async (req: Request, res: Response, next: NextFuncti
     const fullPrompt = buildPrompt(prompt, positiveTags, negativeTags);
 
     if (!fullPrompt) {
-      return res.status(400).json({ error: '请输入提示词或选择标签' });
+      return res.status(400).json({ success: false, error: '请输入提示词或选择标签' });
     }
 
-    // 构建发送给AI的请求参数
     const aiRequestParams: Record<string, unknown> = {
       model,
       prompt: fullPrompt,
@@ -125,16 +122,12 @@ imagesRouter.post('/edits', async (req: Request, res: Response, next: NextFuncti
       response_format,
     };
 
-    // 根据模型类型设置 image 字段格式
     if (model.includes('doubao')) {
-      // 豆包用字符串
       aiRequestParams.image = image[0];
     } else {
-      // nano-banana 用数组
       aiRequestParams.image = image;
     }
 
-    // 根据模型类型设置清晰度字段
     if (image_size) {
       if (model.includes('nano-banana-2')) {
         aiRequestParams.image_size = image_size;
@@ -151,7 +144,6 @@ imagesRouter.post('/edits', async (req: Request, res: Response, next: NextFuncti
 
     const duration = Date.now() - startTime;
     console.log(`响应耗时: ${duration}ms`);
-    console.log('响应结果:', JSON.stringify(response, null, 2));
     console.log('================================\n');
 
     res.json({
@@ -167,6 +159,66 @@ imagesRouter.post('/edits', async (req: Request, res: Response, next: NextFuncti
     console.error(`\n========== 图生图错误 (${duration}ms) ==========`);
     console.error('错误信息:', error);
     console.error('============================================\n');
+    next(error);
+  }
+});
+
+// ============ 角色设计稿生成 ============
+
+// 角色设计稿提示词模板（存储在后端，不暴露给前端）
+const CHARACTER_DESIGN_PROMPT_TEMPLATE = `请根据以下角色信息，生成一份完整的角色设计参考图（类似手绘网格纸风格），包含以下模块：
+1. 【配色】：列出角色主色调。
+2. 【多角度视图】：正面、侧面、背面的全身展示。
+3. 【细节】列出至少3个角色设计细节（如：服饰、配饰、物品）。
+4. 【动作姿势】：至少3个动态动作（如跑、跳、坐）。
+5. 【表情集合】：至少5种不同情绪的面部表情（如开心、害羞、生气）。
+
+角色信息：`;
+
+// 角色设计稿生成请求验证
+const characterDesignSchema = z.object({
+  description: z.string().min(1, '角色描述不能为空'),
+});
+
+// 角色设计稿生成
+imagesRouter.post('/character-design', async (req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+  try {
+    const { description } = characterDesignSchema.parse(req.body);
+    
+    // 拼接提示词模板和用户描述
+    const fullPrompt = `${CHARACTER_DESIGN_PROMPT_TEMPLATE}[${description.trim()}]`;
+
+    const aiRequestParams = {
+      model: 'nano-banana-2-4k',
+      prompt: JSON.stringify({ prompt: fullPrompt }),
+      aspect_ratio: '1:1',
+      image_size: '2K',
+      response_format: 'url',
+    };
+
+    console.log('\n========== 角色设计稿生成请求 ==========');
+    console.log('角色描述:', description);
+
+    // @ts-expect-error - 自定义API参数
+    const response = await openai.images.generate(aiRequestParams);
+
+    const duration = Date.now() - startTime;
+    console.log(`响应耗时: ${duration}ms`);
+    console.log('==========================================\n');
+
+    res.json({
+      success: true,
+      images: (response.data || []).map(img => ({
+        url: img.url,
+        revisedPrompt: img.revised_prompt,
+      })),
+    });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`\n========== 角色设计稿生成错误 (${duration}ms) ==========`);
+    console.error('错误信息:', error);
+    console.error('====================================================\n');
     next(error);
   }
 });
