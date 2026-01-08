@@ -6,7 +6,7 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 
 import { errorHandler } from './middleware/errorHandler.js';
-import { modelRouter } from './routes/models.js';
+import { modelValidator } from './middleware/modelValidator.js';
 import { uploadRouter } from './routes/upload.js';
 import { imagesRouter } from './routes/images.js';
 import { videosRouter } from './routes/videos.js';
@@ -44,8 +44,10 @@ app.get('/health', (_, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// 模型验证中间件（全局）
+app.use('/api', modelValidator);
+
 // API routes
-app.use('/api/models', modelRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/images', imagesRouter);
 app.use('/api/videos', videosRouter);
