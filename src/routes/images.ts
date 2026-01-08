@@ -178,27 +178,35 @@ const CHARACTER_DESIGN_PROMPT_TEMPLATE = `请根据以下角色信息，生成�
 // 角色设计稿生成请求验证
 const characterDesignSchema = z.object({
   description: z.string().min(1, '角色描述不能为空'),
+  model: z.string().default('nano-banana-2-4k'),
 });
 
 // 角色设计稿生成
 imagesRouter.post('/character-design', async (req: Request, res: Response, next: NextFunction) => {
   const startTime = Date.now();
   try {
-    const { description } = characterDesignSchema.parse(req.body);
+    const { description, model } = characterDesignSchema.parse(req.body);
     
     // 拼接提示词模板和用户描述
     const fullPrompt = `${CHARACTER_DESIGN_PROMPT_TEMPLATE}[${description.trim()}]`;
 
-    const aiRequestParams = {
-      model: 'nano-banana-2-4k',
+    const aiRequestParams: Record<string, unknown> = {
+      model,
       prompt: JSON.stringify({ prompt: fullPrompt }),
       aspect_ratio: '1:1',
-      image_size: '2K',
       response_format: 'url',
     };
 
+    // 根据模型设置清晰度参数
+    if (model.includes('nano-banana-2')) {
+      aiRequestParams.image_size = '2K';
+    } else if (model.includes('doubao')) {
+      aiRequestParams.size = '1024x1024';
+    }
+
     console.log('\n========== 角色设计稿生成请求 ==========');
     console.log('角色描述:', description);
+    console.log('使用模型:', model);
 
     // @ts-expect-error - 自定义API参数
     const response = await openai.images.generate(aiRequestParams);
