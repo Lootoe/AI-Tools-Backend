@@ -262,6 +262,7 @@ const updateStoryboardSchema = z.object({
   sceneNumber: z.number().int().positive().optional(),
   description: z.string().optional(),
   referenceImageUrls: z.array(z.string()).optional(),
+  firstFrameUrl: z.string().nullable().optional(),
   videoUrl: z.string().nullable().optional(),
   thumbnailUrl: z.string().nullable().optional(),
   taskId: z.string().nullable().optional(),

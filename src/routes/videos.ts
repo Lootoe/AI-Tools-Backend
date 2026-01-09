@@ -128,6 +128,7 @@ const storyboardToVideoSchema = z.object({
   duration: z.enum(['10', '15']).default('15'),
   private: z.boolean().default(false),
   reference_images: z.array(z.string()).optional(), // 参考图URL数组
+  first_frame_url: z.string().optional(),           // 首帧图片URL
   linked_assets: linkedAssetsSchema.optional(), // 关联资产信息
   variantId: z.string().optional(), // 分镜副本ID，用于后端轮询更新状态
 });
@@ -188,7 +189,7 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
   const tokenCost = TOKEN_COSTS.VIDEO_STORYBOARD;
 
   try {
-    const { prompt, model, aspect_ratio, duration, private: isPrivate, reference_images, linked_assets, variantId } = storyboardToVideoSchema.parse(req.body);
+    const { prompt, model, aspect_ratio, duration, private: isPrivate, reference_images, first_frame_url, linked_assets, variantId } = storyboardToVideoSchema.parse(req.body);
 
     // 扣除代币
     const deductResult = await deductBalance(userId, tokenCost, '生成分镜视频');
@@ -204,10 +205,15 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
       }).catch(() => { /* 静默失败 */ });
     }
 
-    // 构建最终的 images 数组：按角色、场景、物品的顺序添加关联资产图片
+    // 构建最终的 images 数组：首帧放第0位，然后是参考图，最后是关联资产图片
     const finalImages: string[] = [];
 
-    // 先添加原有的参考图
+    // 首帧图片放在第0位
+    if (first_frame_url) {
+      finalImages.push(first_frame_url);
+    }
+
+    // 添加原有的参考图
     if (reference_images && reference_images.length > 0) {
       finalImages.push(...reference_images);
     }
@@ -225,13 +231,29 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
       });
     }
 
-    // 构建最终的 prompt：如果有关联资产，在开头添加参考图映射表文案
-    let finalPrompt = prompt;
+    // 构建最终的 prompt
+    // 用户提示词需要包裹一层
+    const wrappedUserPrompt = `用户要求如下=[${prompt}]`;
+    let finalPrompt = wrappedUserPrompt;
+
+    // 如果有首帧图片，在提示词最开头添加首帧说明
+    if (first_frame_url) {
+      finalPrompt = '以第1张参考图为本视频的首帧，角色、场景、景别、镜头、构图、色彩必须完全一致。\n\n' + wrappedUserPrompt;
+    }
+
+    // 如果有关联资产，添加参考图映射表文案
     if (linked_assets && (linked_assets.characters.length > 0 || linked_assets.scenes.length > 0 || linked_assets.props.length > 0)) {
-      // 关联资产图片的起始索引（从原有参考图之后开始）
-      const assetStartIndex = (reference_images?.length || 0) + 1;
+      // 关联资产图片的起始索引：首帧(如果有)+参考图数量+1
+      const assetStartIndex = (first_frame_url ? 1 : 0) + (reference_images?.length || 0) + 1;
       const referenceMapPrompt = buildReferenceMapPrompt(linked_assets, assetStartIndex);
-      finalPrompt = referenceMapPrompt + prompt;
+      // 在首帧说明之后、原始提示词之前插入映射表
+      if (first_frame_url) {
+        // 已经有首帧说明，在其后插入映射表
+        const firstFramePrefix = '以第1张参考图为本视频的首帧，角色、场景、景别、镜头、构图、色彩必须完全一致。\n\n';
+        finalPrompt = firstFramePrefix + referenceMapPrompt + wrappedUserPrompt;
+      } else {
+        finalPrompt = referenceMapPrompt + wrappedUserPrompt;
+      }
     }
 
     const requestBody: Record<string, unknown> = {

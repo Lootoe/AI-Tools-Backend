@@ -98,6 +98,7 @@ model Storyboard {
   sceneNumber        Int
   description        String
   referenceImageUrls String[] // 参考图URL数组
+  firstFrameUrl      String?  // 首帧图片URL
   aspectRatio        String?  @default("16:9") // 16:9 | 9:16
   duration           String?  @default("10") // 10 | 15
   activeVariantId    String?  // 当前选中的副本ID

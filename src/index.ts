@@ -37,10 +37,10 @@ app.use(limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Logging
-if (process.env.NODE_ENV !== 'test') {
-  app.use(morgan('combined'));
-}
+// Logging - disabled
+// if (process.env.NODE_ENV !== 'test') {
+//   app.use(morgan('combined'));
+// }
 
 // Health check
 app.get('/health', (_, res) => {
