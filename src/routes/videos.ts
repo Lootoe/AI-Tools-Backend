@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { spawn } from 'child_process';
 import { startPolling } from '../lib/videoStatusPoller.js';
 import { deductBalance, refundBalance, TOKEN_COSTS } from '../lib/balance.js';
 import { AuthRequest } from '../middleware/auth.js';
@@ -316,4 +317,80 @@ videosRouter.get('/polling/status', async (_req: Request, res: Response) => {
       tasks: status,
     },
   });
+});
+
+
+// 视频截屏 - 使用 ffmpeg 提取指定时间点的帧，直接返回图片文件流
+videosRouter.get('/capture-frame', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const videoUrl = req.query.url as string;
+    const timestamp = parseFloat(req.query.t as string) || 0;
+
+    if (!videoUrl) {
+      return res.status(400).json({ error: '缺少视频URL参数' });
+    }
+
+    console.log('\n========== 视频截屏 ==========');
+    console.log('视频URL:', videoUrl);
+    console.log('时间戳:', timestamp, '秒');
+
+    // 设置响应头
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Disposition', `attachment; filename="frame-${Date.now()}.png"`);
+
+    // 使用 ffmpeg 从视频 URL 提取帧，直接流式输出
+    const ffmpeg = spawn('ffmpeg', [
+      '-ss', timestamp.toString(),
+      '-i', videoUrl,
+      '-vframes', '1',
+      '-f', 'image2pipe',
+      '-vcodec', 'png',
+      'pipe:1',
+    ]);
+
+    // 直接将 ffmpeg 输出管道到响应
+    ffmpeg.stdout.pipe(res);
+
+    ffmpeg.stderr.on('data', (data: Buffer) => {
+      const message = data.toString();
+      if (message.includes('Error') || message.includes('error')) {
+        console.error('ffmpeg stderr:', message);
+      }
+    });
+
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        console.log('截屏成功');
+      } else {
+        console.error('ffmpeg 退出码:', code);
+      }
+      console.log('==============================\n');
+    });
+
+    ffmpeg.on('error', (err) => {
+      console.error('ffmpeg 执行失败:', err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: `ffmpeg 执行失败: ${err.message}` });
+      }
+    });
+
+    // 设置超时（30秒）
+    const timeout = setTimeout(() => {
+      ffmpeg.kill('SIGKILL');
+      if (!res.headersSent) {
+        res.status(504).json({ error: 'ffmpeg 截屏超时' });
+      }
+    }, 30000);
+
+    res.on('finish', () => clearTimeout(timeout));
+    res.on('close', () => {
+      clearTimeout(timeout);
+      ffmpeg.kill('SIGKILL');
+    });
+  } catch (error) {
+    console.error('\n========== 视频截屏错误 ==========');
+    console.error('错误信息:', error);
+    console.error('==================================\n');
+    next(error);
+  }
 });

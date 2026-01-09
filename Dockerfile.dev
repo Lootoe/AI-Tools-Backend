@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# 安装 Prisma 需要的依赖
-RUN apk add --no-cache openssl openssl-dev libc6-compat
+# 安装 Prisma 需要的依赖和 ffmpeg（用于视频截屏功能）
+RUN apk add --no-cache openssl openssl-dev libc6-compat ffmpeg
 
 WORKDIR /app
 
