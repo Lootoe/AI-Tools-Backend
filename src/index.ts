@@ -7,10 +7,12 @@ import rateLimit from 'express-rate-limit';
 
 import { errorHandler } from './middleware/errorHandler.js';
 import { modelValidator } from './middleware/modelValidator.js';
+import { authMiddleware } from './middleware/auth.js';
 import { uploadRouter } from './routes/upload.js';
 import { imagesRouter } from './routes/images.js';
 import { videosRouter } from './routes/videos.js';
 import { scriptsRouter } from './routes/scripts.js';
+import { authRouter } from './routes/auth.js';
 import { resumePendingPolls, stopAllPolling } from './lib/videoStatusPoller.js';
 
 const app = express();
@@ -49,10 +51,14 @@ app.get('/health', (_, res) => {
 app.use('/api', modelValidator);
 
 // API routes
-app.use('/api/upload', uploadRouter);
-app.use('/api/images', imagesRouter);
-app.use('/api/videos', videosRouter);
-app.use('/api/scripts', scriptsRouter);
+// 认证路由不需要鉴权
+app.use('/api/auth', authRouter);
+
+// 以下路由需要鉴权
+app.use('/api/upload', authMiddleware, uploadRouter);
+app.use('/api/images', authMiddleware, imagesRouter);
+app.use('/api/videos', authMiddleware, videosRouter);
+app.use('/api/scripts', authMiddleware, scriptsRouter);
 
 // Error handling
 app.use(errorHandler);

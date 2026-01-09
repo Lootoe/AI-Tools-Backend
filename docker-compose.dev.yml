@@ -4,13 +4,19 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - "3000:3000"
+      - "8686:3000"
     environment:
       - NODE_ENV=development
       - AI_API_BASE_URL=${AI_API_BASE_URL}
       - AI_API_KEY=${AI_API_KEY}
       - CORS_ORIGIN=${CORS_ORIGIN}
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/ai_tools?schema=public
+      - JWT_SECRET=${JWT_SECRET}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM}
     volumes:
       - ./src:/app/src
       - ./prisma:/app/prisma
