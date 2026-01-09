@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - "8686:3000"
+      - "3000:3000"
     environment:
       - NODE_ENV=development
       - AI_API_BASE_URL=${AI_API_BASE_URL}
