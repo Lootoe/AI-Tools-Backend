@@ -195,11 +195,11 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
       return res.status(400).json({ error: deductResult.error });
     }
 
-    // 如果有 variantId，更新 variant 记录用户ID和代币消耗（用于失败时返还）
+    // 如果有 variantId，更新 variant 状态为 generating，并记录用户ID和代币消耗（用于失败时返还）
     if (variantId) {
       await prisma.storyboardVariant.update({
         where: { id: variantId },
-        data: { userId, tokenCost },
+        data: { userId, tokenCost, status: 'generating', progress: '0' },
       }).catch(() => { /* 静默失败 */ });
     }
 
@@ -274,9 +274,19 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
     console.log('响应结果:', JSON.stringify(data, null, 2));
     console.log('==================================\n');
 
-    // 如果有 variantId 且获取到 taskId，启动后端轮询
+    // 如果有 variantId 且获取到 taskId，保存 taskId 到数据库并启动后端轮询
     const taskId = data.task_id || data.id;
     if (variantId && taskId) {
+      // 先保存 taskId 到数据库，避免前端刷新导致 taskId 丢失
+      try {
+        await prisma.storyboardVariant.update({
+          where: { id: variantId },
+          data: { taskId },
+        });
+        console.log(`已保存 taskId ${taskId} 到 variant ${variantId}`);
+      } catch (err) {
+        console.error('保存 taskId 失败:', err);
+      }
       startPolling(taskId, variantId);
     }
 
