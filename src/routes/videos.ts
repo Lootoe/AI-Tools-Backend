@@ -1,6 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { startPolling } from '../lib/videoStatusPoller.js';
+import { deductBalance, refundBalance, TOKEN_COSTS } from '../lib/balance.js';
+import { AuthRequest } from '../middleware/auth.js';
+import { prisma } from '../lib/prisma.js';
 
 export const videosRouter = Router();
 
@@ -178,10 +181,27 @@ function buildReferenceMapPrompt(linkedAssets: z.infer<typeof linkedAssetsSchema
 }
 
 // 分镜生成视频
-videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, next: NextFunction) => {
+videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response, next: NextFunction) => {
   const startTime = Date.now();
+  const userId = req.userId!;
+  const tokenCost = TOKEN_COSTS.VIDEO_STORYBOARD;
+
   try {
     const { prompt, model, aspect_ratio, duration, private: isPrivate, reference_images, linked_assets, variantId } = storyboardToVideoSchema.parse(req.body);
+
+    // 扣除代币
+    const deductResult = await deductBalance(userId, tokenCost, '生成分镜视频');
+    if (!deductResult.success) {
+      return res.status(400).json({ error: deductResult.error });
+    }
+
+    // 如果有 variantId，更新 variant 记录用户ID和代币消耗（用于失败时返还）
+    if (variantId) {
+      await prisma.storyboardVariant.update({
+        where: { id: variantId },
+        data: { userId, tokenCost },
+      }).catch(() => { /* 静默失败 */ });
+    }
 
     // 构建最终的 images 数组：按角色、场景、物品的顺序添加关联资产图片
     const finalImages: string[] = [];
@@ -242,10 +262,12 @@ videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, ne
     if (!response.ok) {
       const errorText = await response.text();
       console.error('分镜生成视频 API 错误:', errorText);
+      // API 调用失败，返还代币
+      await refundBalance(userId, tokenCost, '分镜视频生成失败，代币已返还');
       throw new Error(`分镜生成视频 API 调用失败: ${response.status} ${errorText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { task_id?: string; id?: string;[key: string]: unknown };
 
     const duration_ms = Date.now() - startTime;
     console.log(`响应耗时: ${duration_ms}ms`);
@@ -261,6 +283,7 @@ videosRouter.post('/storyboard-to-video', async (req: Request, res: Response, ne
     res.json({
       success: true,
       data,
+      balance: deductResult.balance,
     });
   } catch (error) {
     const duration_ms = Date.now() - startTime;

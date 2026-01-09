@@ -17,11 +17,30 @@ model User {
   password  String
   nickname  String?
   avatar    String?
-  balance   Float    @default(0)
+  balance   Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  balanceRecords BalanceRecord[]
+
   @@map("users")
+}
+
+// 余额记录
+model BalanceRecord {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // consume | recharge | refund | invite | redeem
+  amount      Int      // 正数为增加，负数为减少
+  balance     Int      // 变动后余额
+  description String   // 描述，如"生成角色设计稿"
+  relatedId   String?  // 关联ID，如任务ID
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("balance_records")
 }
 
 // 邮箱验证码
@@ -109,6 +128,8 @@ model StoryboardVariant {
   taskId       String?
   progress     String?
   status       String   @default("pending") // pending | queued | generating | completed | failed
+  userId       String?  // 创建者用户ID，用于失败时返还代币
+  tokenCost    Int?     // 消耗的代币数量
   createdAt    DateTime @default(now())
 
   storyboard Storyboard @relation(fields: [storyboardId], references: [id], onDelete: Cascade)

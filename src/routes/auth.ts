@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { sendVerificationEmail } from '../lib/email.js';
+import { getBalanceRecords } from '../lib/balance.js';
 
 const router = Router();
 
@@ -203,6 +204,37 @@ router.get('/me', async (req: Request, res: Response) => {
     }
 
     res.json({ success: true, user });
+  } catch {
+    res.status(401).json({ error: '登录已过期' });
+  }
+});
+
+// 获取余额记录
+router.get('/balance-records', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: '未登录' });
+    }
+
+    const token = authHeader.slice(7);
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+
+    const page = parseInt(req.query.page as string) || 1;
+    const pageSize = parseInt(req.query.pageSize as string) || 20;
+
+    const { records, total } = await getBalanceRecords(decoded.userId, page, pageSize);
+
+    res.json({
+      success: true,
+      data: {
+        records,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    });
   } catch {
     res.status(401).json({ error: '登录已过期' });
   }

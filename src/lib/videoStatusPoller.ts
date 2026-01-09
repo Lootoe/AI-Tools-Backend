@@ -5,6 +5,7 @@
  */
 
 import prisma from './prisma.js';
+import { refundBalance, TOKEN_COSTS } from './balance.js';
 
 // Sora2 API 配置
 const SORA2_API_BASE = process.env.AI_API_BASE_URL || '';
@@ -20,7 +21,7 @@ const STATUS_MAP: Record<string, string> = {
 };
 
 // 正在轮询的任务集合（避免重复轮询）
-const pollingTasks = new Map<string, { startTime: number; intervalId: NodeJS.Timeout }>();
+const pollingTasks = new Map<string, { startTime: number; intervalId: NodeJS.Timeout; variantId: string }>();
 
 /**
  * 查询单个任务的状态
@@ -44,7 +45,12 @@ async function fetchTaskStatus(taskId: string): Promise<{
             return null;
         }
 
-        const data = await response.json();
+        const data = await response.json() as {
+            status: string;
+            progress?: string;
+            data?: { output?: string; thumbnail?: string };
+            fail_reason?: string;
+        };
         return {
             status: data.status,
             progress: data.progress,
@@ -83,6 +89,30 @@ async function updateVariantStatus(
 }
 
 /**
+ * 生成失败时返还代币
+ */
+async function refundOnFailure(variantId: string, taskId: string): Promise<void> {
+    try {
+        const variant = await prisma.storyboardVariant.findUnique({
+            where: { id: variantId },
+            select: { userId: true, tokenCost: true },
+        });
+
+        if (variant?.userId && variant?.tokenCost) {
+            await refundBalance(
+                variant.userId,
+                variant.tokenCost,
+                '分镜视频生成失败，代币已返还',
+                taskId
+            );
+            console.log(`已返还用户 ${variant.userId} 代币 ${variant.tokenCost}`);
+        }
+    } catch (error) {
+        console.error('返还代币失败:', error);
+    }
+}
+
+/**
  * 停止轮询某个任务
  */
 function stopPolling(taskId: string): void {
@@ -108,6 +138,7 @@ export function startPolling(taskId: string, variantId: string): void {
         // 检查是否超时
         if (Date.now() - startTime > MAX_POLL_DURATION) {
             await updateVariantStatus(variantId, 'failed');
+            await refundOnFailure(variantId, taskId);
             stopPolling(taskId);
             return;
         }
@@ -126,6 +157,10 @@ export function startPolling(taskId: string, variantId: string): void {
 
         // 如果任务完成或失败，停止轮询
         if (result.status === 'SUCCESS' || result.status === 'FAILURE') {
+            // 失败时返还代币
+            if (result.status === 'FAILURE') {
+                await refundOnFailure(variantId, taskId);
+            }
             stopPolling(taskId);
         }
     };
@@ -135,7 +170,7 @@ export function startPolling(taskId: string, variantId: string): void {
 
     // 设置定时轮询
     const intervalId = setInterval(poll, POLL_INTERVAL);
-    pollingTasks.set(taskId, { startTime, intervalId });
+    pollingTasks.set(taskId, { startTime, intervalId, variantId });
 }
 
 /**

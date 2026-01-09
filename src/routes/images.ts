@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { openai } from '../lib/ai.js';
+import { deductBalance, refundBalance, getImageTokenCost } from '../lib/balance.js';
+import { AuthRequest } from '../middleware/auth.js';
 
 export const imagesRouter = Router();
 
@@ -39,10 +41,22 @@ const characterDesignSchema = z.object({
 });
 
 // 角色设计稿生成
-imagesRouter.post('/character-design', async (req: Request, res: Response, next: NextFunction) => {
+imagesRouter.post('/character-design', async (req: AuthRequest, res: Response, next: NextFunction) => {
     const startTime = Date.now();
+    const userId = req.userId!;
+    let tokenCost = 0;
+    let deducted = false;
+
     try {
         const { description, model } = characterDesignSchema.parse(req.body);
+
+        // 计算代币消耗并扣除
+        tokenCost = getImageTokenCost(model);
+        const deductResult = await deductBalance(userId, tokenCost, '生成角色设计稿');
+        if (!deductResult.success) {
+            return res.status(400).json({ error: deductResult.error });
+        }
+        deducted = true;
 
         // 拼接提示词模板和用户描述
         const fullPrompt = `${CHARACTER_DESIGN_PROMPT_TEMPLATE}[${description.trim()}]`;
@@ -83,8 +97,14 @@ imagesRouter.post('/character-design', async (req: Request, res: Response, next:
                 url: img.url,
                 revisedPrompt: img.revised_prompt,
             })),
+            balance: deductResult.balance,
         });
     } catch (error) {
+        // 生成失败且已扣款，返还代币
+        if (deducted) {
+            await refundBalance(userId, tokenCost, '角色设计稿生成失败，代币已返还');
+        }
+
         const duration = Date.now() - startTime;
         console.error(`\n========== 角色设计稿生成错误 (${duration}ms) ==========`);
         console.error('错误信息:', error);
@@ -102,10 +122,22 @@ const sceneDesignSchema = z.object({
 });
 
 // 场景设计稿生成
-imagesRouter.post('/scene-design', async (req: Request, res: Response, next: NextFunction) => {
+imagesRouter.post('/scene-design', async (req: AuthRequest, res: Response, next: NextFunction) => {
     const startTime = Date.now();
+    const userId = req.userId!;
+    let tokenCost = 0;
+    let deducted = false;
+
     try {
         const { description, model } = sceneDesignSchema.parse(req.body);
+
+        // 计算代币消耗并扣除
+        tokenCost = getImageTokenCost(model);
+        const deductResult = await deductBalance(userId, tokenCost, '生成场景设计稿');
+        if (!deductResult.success) {
+            return res.status(400).json({ error: deductResult.error });
+        }
+        deducted = true;
 
         // 拼接提示词模板和用户描述
         const fullPrompt = `${SCENE_DESIGN_PROMPT_TEMPLATE}[${description.trim()}]`;
@@ -145,8 +177,14 @@ imagesRouter.post('/scene-design', async (req: Request, res: Response, next: Nex
                 url: img.url,
                 revisedPrompt: img.revised_prompt,
             })),
+            balance: deductResult.balance,
         });
     } catch (error) {
+        // 生成失败且已扣款，返还代币
+        if (deducted) {
+            await refundBalance(userId, tokenCost, '场景设计稿生成失败，代币已返还');
+        }
+
         const duration = Date.now() - startTime;
         console.error(`\n========== 场景设计稿生成错误 (${duration}ms) ==========`);
         console.error('错误信息:', error);
@@ -164,10 +202,22 @@ const propDesignSchema = z.object({
 });
 
 // 物品设计稿生成
-imagesRouter.post('/prop-design', async (req: Request, res: Response, next: NextFunction) => {
+imagesRouter.post('/prop-design', async (req: AuthRequest, res: Response, next: NextFunction) => {
     const startTime = Date.now();
+    const userId = req.userId!;
+    let tokenCost = 0;
+    let deducted = false;
+
     try {
         const { description, model } = propDesignSchema.parse(req.body);
+
+        // 计算代币消耗并扣除
+        tokenCost = getImageTokenCost(model);
+        const deductResult = await deductBalance(userId, tokenCost, '生成物品设计稿');
+        if (!deductResult.success) {
+            return res.status(400).json({ error: deductResult.error });
+        }
+        deducted = true;
 
         // 拼接提示词模板和用户描述
         const fullPrompt = `${PROP_DESIGN_PROMPT_TEMPLATE}[${description.trim()}]`;
@@ -207,8 +257,14 @@ imagesRouter.post('/prop-design', async (req: Request, res: Response, next: Next
                 url: img.url,
                 revisedPrompt: img.revised_prompt,
             })),
+            balance: deductResult.balance,
         });
     } catch (error) {
+        // 生成失败且已扣款，返还代币
+        if (deducted) {
+            await refundBalance(userId, tokenCost, '物品设计稿生成失败，代币已返还');
+        }
+
         const duration = Date.now() - startTime;
         console.error(`\n========== 物品设计稿生成错误 (${duration}ms) ==========`);
         console.error('错误信息:', error);
