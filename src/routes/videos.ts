@@ -341,6 +341,165 @@ videosRouter.get('/polling/status', async (_req: Request, res: Response) => {
   });
 });
 
+// 视频 Remix 请求验证
+const videoRemixSchema = z.object({
+  prompt: z.string().min(1, '编辑脚本不能为空'),
+});
+
+// 视频 Remix - 基于已生成的视频进行编辑，生成新副本
+// POST /v1/videos/{task_id}/remix
+videosRouter.post('/remix/:taskId', async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+  const userId = req.userId!;
+  const tokenCost = TOKEN_COSTS.VIDEO_STORYBOARD;
+
+  try {
+    const { taskId } = req.params;
+    const { prompt } = videoRemixSchema.parse(req.body);
+
+    // 扣除代币
+    const deductResult = await deductBalance(userId, tokenCost, '编辑分镜视频');
+    if (!deductResult.success) {
+      return res.status(400).json({ error: deductResult.error });
+    }
+
+    console.log('\n========== 视频 Remix ==========');
+    console.log('原任务ID:', taskId);
+    console.log('编辑脚本:', prompt);
+
+    // 调用 Sora2 Remix API
+    const response = await fetch(`${SORA2_API_BASE}/v1/videos/${taskId}/remix`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.AI_API_KEY}`,
+      },
+      body: JSON.stringify({ prompt }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('视频 Remix API 错误:', errorText);
+      // API 调用失败，返还代币
+      await refundBalance(userId, tokenCost, '视频编辑失败，代币已返还');
+      throw new Error(`视频 Remix API 调用失败: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json() as { task_id?: string; id?: string;[key: string]: unknown };
+
+    const duration_ms = Date.now() - startTime;
+    console.log(`响应耗时: ${duration_ms}ms`);
+    console.log('响应结果:', JSON.stringify(data, null, 2));
+    console.log('================================\n');
+
+    res.json({
+      success: true,
+      data,
+      balance: deductResult.balance,
+    });
+  } catch (error) {
+    const duration_ms = Date.now() - startTime;
+    console.error(`\n========== 视频 Remix 错误 (${duration_ms}ms) ==========`);
+    console.error('错误信息:', error);
+    console.error('================================================\n');
+    next(error);
+  }
+});
+
+// 视频 Remix 并创建新副本
+// POST /remix/:taskId/variant
+videosRouter.post('/remix/:taskId/variant', async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+  const userId = req.userId!;
+  const tokenCost = TOKEN_COSTS.VIDEO_STORYBOARD;
+
+  try {
+    const { taskId } = req.params;
+    const { prompt, variantId } = z.object({
+      prompt: z.string().min(1, '编辑脚本不能为空'),
+      variantId: z.string().min(1, '副本ID不能为空'),
+    }).parse(req.body);
+
+    // 扣除代币
+    const deductResult = await deductBalance(userId, tokenCost, '编辑分镜视频');
+    if (!deductResult.success) {
+      return res.status(400).json({ error: deductResult.error });
+    }
+
+    // 更新 variant 状态为 generating
+    if (variantId) {
+      await prisma.storyboardVariant.update({
+        where: { id: variantId },
+        data: { userId, tokenCost, status: 'generating', progress: '0' },
+      }).catch(() => { /* 静默失败 */ });
+    }
+
+    console.log('\n========== 视频 Remix (创建副本) ==========');
+    console.log('原任务ID:', taskId);
+    console.log('编辑脚本:', prompt);
+    console.log('新副本ID:', variantId);
+
+    // 调用 Sora2 Remix API
+    const response = await fetch(`${SORA2_API_BASE}/v1/videos/${taskId}/remix`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.AI_API_KEY}`,
+      },
+      body: JSON.stringify({ prompt }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('视频 Remix API 错误:', errorText);
+      // API 调用失败，返还代币
+      await refundBalance(userId, tokenCost, '视频编辑失败，代币已返还');
+      // 更新 variant 状态为失败
+      if (variantId) {
+        await prisma.storyboardVariant.update({
+          where: { id: variantId },
+          data: { status: 'failed' },
+        }).catch(() => { /* 静默失败 */ });
+      }
+      throw new Error(`视频 Remix API 调用失败: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json() as { task_id?: string; id?: string;[key: string]: unknown };
+
+    const duration_ms = Date.now() - startTime;
+    console.log(`响应耗时: ${duration_ms}ms`);
+    console.log('响应结果:', JSON.stringify(data, null, 2));
+    console.log('==========================================\n');
+
+    // 如果获取到新的 taskId，保存并启动轮询
+    const newTaskId = data.task_id || data.id;
+    if (variantId && newTaskId) {
+      try {
+        await prisma.storyboardVariant.update({
+          where: { id: variantId },
+          data: { taskId: newTaskId },
+        });
+        console.log(`已保存新 taskId ${newTaskId} 到 variant ${variantId}`);
+      } catch (err) {
+        console.error('保存 taskId 失败:', err);
+      }
+      startPolling(newTaskId, variantId);
+    }
+
+    res.json({
+      success: true,
+      data,
+      balance: deductResult.balance,
+    });
+  } catch (error) {
+    const duration_ms = Date.now() - startTime;
+    console.error(`\n========== 视频 Remix 错误 (${duration_ms}ms) ==========`);
+    console.error('错误信息:', error);
+    console.error('================================================\n');
+    next(error);
+  }
+});
+
 
 // 视频截屏 - 使用 ffmpeg 提取指定时间点的帧，直接返回图片文件流
 videosRouter.get('/capture-frame', async (req: Request, res: Response, next: NextFunction) => {
