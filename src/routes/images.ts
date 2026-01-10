@@ -7,10 +7,13 @@ import { AuthRequest } from '../middleware/auth.js';
 
 export const imagesRouter = Router();
 
-// ============ 资产设计稿提示词模板 ============
+// ============ 提示词模板 ============
 
-// 角色设计稿提示词模板
-const CHARACTER_DESIGN_PROMPT_TEMPLATE = `请根据以下角色信息，生成一份完整的角色设计参考图，包含以下模块：
+// 提示词模板类型
+type PromptTemplateType = 'none' | 'character' | 'scene' | 'prop';
+
+// 通用角色提示词模板
+const CHARACTER_PROMPT_TEMPLATE = `请根据以下角色信息，生成一份完整的角色设计参考图，包含以下模块：
 1. 【配色】：列出角色主色调。
 2. 【多角度视图】：正面、侧面、背面的全身展示。
 3. 【细节】列出至少3个角色设计细节（如：服饰、配饰、物品）。
@@ -19,38 +22,40 @@ const CHARACTER_DESIGN_PROMPT_TEMPLATE = `请根据以下角色信息，生成�
 
 角色信息：`;
 
-// 场景设计稿提示词模板
-const SCENE_DESIGN_PROMPT_TEMPLATE = `请根据以下场景核心设定，生成一份场景设计参考图，包含以下模块：
+// 通用场景提示词模板
+const SCENE_PROMPT_TEMPLATE = `请根据以下场景核心设定，生成一份场景设计参考图，包含以下模块：
 1. 【场景基础信息】：明确场景类型 + 核心氛围 + 主色调组合。
 2. 【多视角视图】：整体俯瞰视角、核心区域近景视角、细节角落特写。
 3. 【场景细节元素】：贴合风格的场景细节元素。
 
 场景核心设定：`;
 
-// 物品设计稿提示词模板
-const PROP_DESIGN_PROMPT_TEMPLATE = `请根据关联的角色/场景信息，生成该物品的设计参考图，包含以下模块：
+// 通用物品提示词模板
+const PROP_PROMPT_TEMPLATE = `请根据关联的角色/场景信息，生成该物品的设计参考图，包含以下模块：
 1. 【材质信息】色调+材质
 2. 【多视角展示】：正面、侧面、细节特写
 3. 【细节】：至少2处细节
 
 物品关联信息：`;
 
-// 根据资产类型获取提示词模板
-const getPromptTemplate = (type: string): string => {
-    switch (type) {
-        case 'character': return CHARACTER_DESIGN_PROMPT_TEMPLATE;
-        case 'scene': return SCENE_DESIGN_PROMPT_TEMPLATE;
-        case 'prop': return PROP_DESIGN_PROMPT_TEMPLATE;
-        default: return CHARACTER_DESIGN_PROMPT_TEMPLATE;
+// 根据模板类型获取提示词模板
+const getPromptTemplate = (templateType: PromptTemplateType): string => {
+    switch (templateType) {
+        case 'character': return CHARACTER_PROMPT_TEMPLATE;
+        case 'scene': return SCENE_PROMPT_TEMPLATE;
+        case 'prop': return PROP_PROMPT_TEMPLATE;
+        case 'none':
+        default: return '';
     }
 };
 
-// 根据资产类型获取描述名称
-const getAssetTypeName = (type: string): string => {
-    switch (type) {
+// 根据模板类型获取描述名称
+const getTemplateName = (templateType: PromptTemplateType): string => {
+    switch (templateType) {
         case 'character': return '角色';
         case 'scene': return '场景';
         case 'prop': return '物品';
+        case 'none':
         default: return '资产';
     }
 };
@@ -62,7 +67,7 @@ const assetDesignSchema = z.object({
     assetId: z.string().min(1, '资产ID不能为空'),
     scriptId: z.string().min(1, '剧本ID不能为空'),
     description: z.string().min(1, '资产描述不能为空'),
-    type: z.enum(['character', 'scene', 'prop']),
+    promptTemplate: z.enum(['none', 'character', 'scene', 'prop']).default('none'),
     model: z.string().default('nano-banana-2'),
     referenceImageUrls: z.array(z.string()).optional(), // 参考图URL数组
 });
@@ -75,12 +80,12 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
     let deducted = false;
 
     try {
-        const { assetId, scriptId, description, type, model, referenceImageUrls } = assetDesignSchema.parse(req.body);
-        const typeName = getAssetTypeName(type);
+        const { assetId, scriptId, description, promptTemplate, model, referenceImageUrls } = assetDesignSchema.parse(req.body);
+        const templateName = getTemplateName(promptTemplate);
 
         // 计算代币消耗并扣除
         tokenCost = getImageTokenCost(model);
-        const deductResult = await deductBalance(userId, tokenCost, `生成${typeName}设计稿`);
+        const deductResult = await deductBalance(userId, tokenCost, `生成${templateName}设计稿`);
         if (!deductResult.success) {
             return res.status(400).json({ error: deductResult.error });
         }
@@ -92,9 +97,9 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
             data: { status: 'generating' },
         });
 
-        // 根据类型获取提示词模板并拼接
-        const promptTemplate = getPromptTemplate(type);
-        const fullPrompt = `${promptTemplate}[${description.trim()}]`;
+        // 根据模板类型获取提示词模板并拼接
+        const template = getPromptTemplate(promptTemplate);
+        const fullPrompt = template ? `${template}[${description.trim()}]` : description.trim();
 
         const aiRequestParams: Record<string, unknown> = {
             model,
@@ -115,9 +120,9 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
             aiRequestParams.size = '1024x1024';
         }
 
-        console.log(`\n========== ${typeName}设计稿生成请求 ==========`);
+        console.log(`\n========== ${templateName}设计稿生成请求 ==========`);
         console.log('资产ID:', assetId);
-        console.log('资产类型:', type);
+        console.log('提示词模板:', promptTemplate);
         console.log('资产描述:', description);
         console.log('参考图数量:', referenceImageUrls?.length || 0);
         console.log('使用模型:', model);
@@ -173,8 +178,8 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
             }).catch(() => { }); // 忽略更新失败
         }
         if (deducted) {
-            const typeName = getAssetTypeName(req.body?.type || 'character');
-            await refundBalance(userId, tokenCost, `${typeName}设计稿生成失败，代币已返还`);
+            const templateName = getTemplateName(req.body?.promptTemplate || 'none');
+            await refundBalance(userId, tokenCost, `${templateName}设计稿生成失败，代币已返还`);
         }
 
         const duration = Date.now() - startTime;

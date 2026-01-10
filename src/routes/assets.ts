@@ -5,9 +5,6 @@ import { AuthRequest } from '../middleware/auth.js';
 
 export const assetsRouter = Router();
 
-// 资产类型枚举
-const AssetType = z.enum(['character', 'scene', 'prop']);
-
 // 获取剧本下的所有资产
 assetsRouter.get('/:scriptId/assets', async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -26,16 +23,15 @@ assetsRouter.get('/:scriptId/assets', async (req: AuthRequest, res: Response, ne
 const createAssetSchema = z.object({
     name: z.string().min(1),
     description: z.string().default(''),
-    type: AssetType,
 });
 
 assetsRouter.post('/:scriptId/assets', async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const { scriptId } = req.params;
-        const { name, description, type } = createAssetSchema.parse(req.body);
+        const { name, description } = createAssetSchema.parse(req.body);
 
         const asset = await prisma.asset.create({
-            data: { scriptId, name, description, type, status: 'pending' },
+            data: { scriptId, name, description, status: 'pending' },
         });
 
         res.json({ asset });
@@ -48,7 +44,6 @@ assetsRouter.post('/:scriptId/assets', async (req: AuthRequest, res: Response, n
 const updateAssetSchema = z.object({
     name: z.string().optional(),
     description: z.string().optional(),
-    type: AssetType.optional(),
     designImageUrl: z.string().optional(),
     thumbnailUrl: z.string().optional(),
     referenceImageUrls: z.array(z.string()).optional(),
