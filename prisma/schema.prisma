@@ -33,7 +33,7 @@ model BalanceRecord {
   type        String   // consume | recharge | refund | invite | redeem
   amount      Int      // 正数为增加，负数为减少
   balance     Int      // 变动后余额
-  description String   // 描述，如"生成角色设计稿"
+  description String   // 描述
   relatedId   String?  // 关联ID，如任务ID
   createdAt   DateTime @default(now())
 
@@ -59,18 +59,15 @@ model VerificationCode {
 
 // 剧本
 model Script {
-  id           String      @id @default(cuid())
+  id           String    @id @default(cuid())
   title        String
-  prompt       String?     // 生成剧本的提示词
-  content      String?     // 剧本内容
-  currentPhase String      @default("storyboard") // storyboard | video
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  prompt       String?   // 生成剧本的提示词
+  content      String?   // 剧本内容
+  currentPhase String    @default("storyboard") // storyboard | video
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  episodes     Episode[]
-  characters   Character[]
-  scenes       Scene[]
-  props        Prop[]
+  episodes Episode[]
 
   @@map("scripts")
 }
@@ -103,10 +100,6 @@ model Storyboard {
   duration           String?  @default("10") // 10 | 15
   activeVariantId    String?  // 当前选中的副本ID
   createdAt          DateTime @default(now())
-  // 关联资产ID数组
-  linkedCharacterIds String[] // 关联的角色ID数组
-  linkedSceneIds     String[] // 关联的场景ID数组
-  linkedPropIds      String[] // 关联的物品ID数组
   // 兼容旧数据
   videoUrl           String?
   thumbnailUrl       String?
@@ -138,54 +131,20 @@ model StoryboardVariant {
   @@map("storyboard_variants")
 }
 
+// 统一资产模型
+model Asset {
+  id                 String   @id @default(cuid())
+  scriptId           String
+  type               String   // character | scene | prop
+  name               String
+  description        String   // 资产设定/信息
+  designImageUrl     String?  // 设计稿图片URL
+  thumbnailUrl       String?  // 缩略图
+  referenceImageUrls String[] // 参考图URL数组
+  status             String   @default("pending") // pending | generating | completed | failed
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-// 角色资产
-model Character {
-  id             String   @id @default(cuid())
-  scriptId       String
-  name           String
-  description    String   // 角色设定/信息
-  designImageUrl String?  // 角色设计稿图片URL
-  thumbnailUrl   String?  // 缩略图
-  status         String   @default("pending") // pending | generating | completed | failed
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
-
-  @@map("characters")
-}
-
-// 场景资产
-model Scene {
-  id             String   @id @default(cuid())
-  scriptId       String
-  name           String
-  description    String   // 场景设定/信息
-  designImageUrl String?  // 场景设计稿图片URL
-  thumbnailUrl   String?  // 缩略图
-  status         String   @default("pending") // pending | generating | completed | failed
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
-
-  @@map("scenes")
-}
-
-// 物品资产
-model Prop {
-  id             String   @id @default(cuid())
-  scriptId       String
-  name           String
-  description    String   // 物品设定/信息
-  designImageUrl String?  // 物品设计稿图片URL
-  thumbnailUrl   String?  // 缩略图
-  status         String   @default("pending") // pending | generating | completed | failed
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
-
-  @@map("props")
+  @@index([scriptId, type])
+  @@map("assets")
 }

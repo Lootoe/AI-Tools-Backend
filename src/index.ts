@@ -13,6 +13,7 @@ import { imagesRouter } from './routes/images.js';
 import { videosRouter } from './routes/videos.js';
 import { scriptsRouter } from './routes/scripts.js';
 import { authRouter } from './routes/auth.js';
+import { assetsRouter } from './routes/assets.js';
 import { resumePendingPolls, stopAllPolling } from './lib/videoStatusPoller.js';
 
 const app = express();
@@ -59,6 +60,7 @@ app.use('/api/upload', authMiddleware, uploadRouter);
 app.use('/api/images', authMiddleware, imagesRouter);
 app.use('/api/videos', authMiddleware, videosRouter);
 app.use('/api/scripts', authMiddleware, scriptsRouter);
+app.use('/api/scripts', authMiddleware, assetsRouter);
 
 // Error handling
 app.use(errorHandler);

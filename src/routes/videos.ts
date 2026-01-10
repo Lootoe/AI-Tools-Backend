@@ -25,15 +25,15 @@ const videoGenerationSchema = z.object({
 videosRouter.post('/generations', async (req: Request, res: Response, next: NextFunction) => {
   const startTime = Date.now();
   try {
-    const { prompt, model, aspect_ratio, duration, private: isPrivate, reference_image } = videoGenerationSchema.parse(req.body);
+    const { prompt, model, aspect_ratio, duration, reference_image } = videoGenerationSchema.parse(req.body);
 
-    // 构建请求体
+    // 构建请求体（强制 private 为 false）
     const requestBody: Record<string, unknown> = {
       prompt,
       model,
       aspect_ratio,
       duration,
-      private: isPrivate,
+      private: false,
     };
 
     // 如果有参考图，添加到请求中
@@ -108,18 +108,6 @@ videosRouter.get('/generations/:taskId', async (req: Request, res: Response, nex
   }
 });
 
-// 关联资产信息
-const linkedAssetSchema = z.object({
-  name: z.string(),
-  imageUrl: z.string(),
-});
-
-const linkedAssetsSchema = z.object({
-  characters: z.array(linkedAssetSchema).default([]),
-  scenes: z.array(linkedAssetSchema).default([]),
-  props: z.array(linkedAssetSchema).default([]),
-});
-
 // 分镜生成视频请求验证
 const storyboardToVideoSchema = z.object({
   prompt: z.string().min(1, '分镜脚本不能为空'),
@@ -129,58 +117,8 @@ const storyboardToVideoSchema = z.object({
   private: z.boolean().default(false),
   reference_images: z.array(z.string()).optional(), // 参考图URL数组
   first_frame_url: z.string().optional(),           // 首帧图片URL
-  linked_assets: linkedAssetsSchema.optional(), // 关联资产信息
   variantId: z.string().optional(), // 分镜副本ID，用于后端轮询更新状态
 });
-
-// 构建参考图映射表文案
-function buildReferenceMapPrompt(linkedAssets: z.infer<typeof linkedAssetsSchema>, startIndex: number): string {
-  const characterMap: Record<string, string> = {};
-  const sceneMap: Record<string, string> = {};
-  const propMap: Record<string, string> = {};
-
-  let currentIndex = startIndex;
-
-  // 按角色、场景、物品的顺序处理
-  linkedAssets.characters.forEach((asset) => {
-    characterMap[asset.name] = `第${currentIndex}张参考图`;
-    currentIndex++;
-  });
-
-  linkedAssets.scenes.forEach((asset) => {
-    sceneMap[asset.name] = `第${currentIndex}张参考图`;
-    currentIndex++;
-  });
-
-  linkedAssets.props.forEach((asset) => {
-    propMap[asset.name] = `第${currentIndex}张参考图`;
-    currentIndex++;
-  });
-
-  // 构建映射表字符串
-  const mapParts: string[] = [];
-
-  if (Object.keys(characterMap).length > 0) {
-    const charEntries = Object.entries(characterMap).map(([name, ref]) => `${name}:${ref}`).join(',');
-    mapParts.push(`角色设计:{${charEntries}}`);
-  }
-
-  if (Object.keys(sceneMap).length > 0) {
-    const sceneEntries = Object.entries(sceneMap).map(([name, ref]) => `${name}:${ref}`).join(',');
-    mapParts.push(`场景设计:{${sceneEntries}}`);
-  }
-
-  if (Object.keys(propMap).length > 0) {
-    const propEntries = Object.entries(propMap).map(([name, ref]) => `${name}:${ref}`).join(',');
-    mapParts.push(`物品设计:{${propEntries}}`);
-  }
-
-  if (mapParts.length === 0) {
-    return '';
-  }
-
-  return `视频中涉及的角色、场景、物品，请参考参考图映射表。参考图映射表：[${mapParts.join(',')}]\n\n`;
-}
 
 // 分镜生成视频
 videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -189,7 +127,7 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
   const tokenCost = TOKEN_COSTS.VIDEO_STORYBOARD;
 
   try {
-    const { prompt, model, aspect_ratio, duration, private: isPrivate, reference_images, first_frame_url, linked_assets, variantId } = storyboardToVideoSchema.parse(req.body);
+    const { prompt, model, aspect_ratio, duration, reference_images, first_frame_url, variantId } = storyboardToVideoSchema.parse(req.body);
 
     // 扣除代币
     const deductResult = await deductBalance(userId, tokenCost, '生成分镜视频');
@@ -205,7 +143,7 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
       }).catch(() => { /* 静默失败 */ });
     }
 
-    // 构建最终的 images 数组：首帧放第0位，然后是参考图，最后是关联资产图片
+    // 构建最终的 images 数组：首帧放第0位，然后是参考图
     const finalImages: string[] = [];
 
     // 首帧图片放在第0位
@@ -218,19 +156,6 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
       finalImages.push(...reference_images);
     }
 
-    // 按角色、场景、物品的顺序添加关联资产图片
-    if (linked_assets) {
-      linked_assets.characters.forEach((asset) => {
-        if (asset.imageUrl) finalImages.push(asset.imageUrl);
-      });
-      linked_assets.scenes.forEach((asset) => {
-        if (asset.imageUrl) finalImages.push(asset.imageUrl);
-      });
-      linked_assets.props.forEach((asset) => {
-        if (asset.imageUrl) finalImages.push(asset.imageUrl);
-      });
-    }
-
     // 构建最终的 prompt
     // 用户提示词需要包裹一层
     const wrappedUserPrompt = `用户要求如下=[${prompt}]`;
@@ -241,27 +166,12 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
       finalPrompt = '以第1张参考图为本视频的首帧，角色、场景、景别、镜头、构图、色彩必须完全一致。\n\n' + wrappedUserPrompt;
     }
 
-    // 如果有关联资产，添加参考图映射表文案
-    if (linked_assets && (linked_assets.characters.length > 0 || linked_assets.scenes.length > 0 || linked_assets.props.length > 0)) {
-      // 关联资产图片的起始索引：首帧(如果有)+参考图数量+1
-      const assetStartIndex = (first_frame_url ? 1 : 0) + (reference_images?.length || 0) + 1;
-      const referenceMapPrompt = buildReferenceMapPrompt(linked_assets, assetStartIndex);
-      // 在首帧说明之后、原始提示词之前插入映射表
-      if (first_frame_url) {
-        // 已经有首帧说明，在其后插入映射表
-        const firstFramePrefix = '以第1张参考图为本视频的首帧，角色、场景、景别、镜头、构图、色彩必须完全一致。\n\n';
-        finalPrompt = firstFramePrefix + referenceMapPrompt + wrappedUserPrompt;
-      } else {
-        finalPrompt = referenceMapPrompt + wrappedUserPrompt;
-      }
-    }
-
     const requestBody: Record<string, unknown> = {
       prompt: finalPrompt,
       model,
       aspect_ratio,
       duration,
-      private: isPrivate,
+      private: false, // 强制为 false
     };
 
     // 如果有参考图，添加到请求中（Sora2 API 使用 images 字段）
