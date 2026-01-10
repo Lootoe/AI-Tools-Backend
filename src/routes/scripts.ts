@@ -58,6 +58,10 @@ scriptsRouter.get('/', async (_req: Request, res: Response, next: NextFunction) 
               include: { variants: { orderBy: { createdAt: 'asc' } } },
               orderBy: { sceneNumber: 'asc' },
             },
+            storyboardImages: {
+              include: { imageVariants: { orderBy: { createdAt: 'asc' } } },
+              orderBy: { sceneNumber: 'asc' },
+            },
           },
           orderBy: { episodeNumber: 'asc' },
         },
@@ -85,6 +89,10 @@ scriptsRouter.get('/:id', async (req: Request, res: Response, next: NextFunction
           include: {
             storyboards: {
               include: { variants: { orderBy: { createdAt: 'asc' } } },
+              orderBy: { sceneNumber: 'asc' },
+            },
+            storyboardImages: {
+              include: { imageVariants: { orderBy: { createdAt: 'asc' } } },
               orderBy: { sceneNumber: 'asc' },
             },
           },
@@ -433,6 +441,214 @@ scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboards/:storyboardId/acti
     await prisma.storyboard.update({
       where: { id: storyboardId },
       data: { activeVariantId: variantId },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+// ============ 分镜图 CRUD ============
+
+async function validateStoryboardImageExists(episodeId: string, storyboardImageId: string): Promise<boolean> {
+  const storyboardImage = await prisma.storyboardImage.findFirst({ where: { id: storyboardImageId, episodeId } });
+  return !!storyboardImage;
+}
+
+const createStoryboardImageSchema = z.object({
+  sceneNumber: z.number().int().positive(),
+  description: z.string().default(''),
+  referenceImageUrls: z.array(z.string()).default([]),
+  aspectRatio: z.enum(['9:16', '16:9', '1:1']).default('9:16'),
+});
+
+scriptsRouter.post('/:scriptId/episodes/:episodeId/storyboard-images', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId, episodeId } = req.params;
+    if (!(await validateEpisodeExists(scriptId, episodeId))) {
+      return res.status(404).json({ success: false, error: '剧集不存在' });
+    }
+    const data = createStoryboardImageSchema.parse(req.body);
+    const storyboardImage = await prisma.storyboardImage.create({
+      data: { ...data, episodeId },
+      include: { imageVariants: true },
+    });
+    res.json({ success: true, data: storyboardImage });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const updateStoryboardImageSchema = z.object({
+  sceneNumber: z.number().int().positive().optional(),
+  description: z.string().optional(),
+  referenceImageUrls: z.array(z.string()).optional(),
+  imageUrl: z.string().nullable().optional(),
+  thumbnailUrl: z.string().nullable().optional(),
+  aspectRatio: z.enum(['9:16', '16:9', '1:1']).optional(),
+  status: z.enum(['pending', 'queued', 'generating', 'completed', 'failed']).optional(),
+  progress: z.string().nullable().optional(),
+  activeImageVariantId: z.string().nullable().optional(),
+});
+
+scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboard-images/:storyboardImageId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId, episodeId, storyboardImageId } = req.params;
+    if (!(await validateEpisodeExists(scriptId, episodeId))) {
+      return res.status(404).json({ success: false, error: '剧集不存在' });
+    }
+    if (!(await validateStoryboardImageExists(episodeId, storyboardImageId))) {
+      return res.status(404).json({ success: false, error: '分镜图不存在' });
+    }
+    const data = updateStoryboardImageSchema.parse(req.body);
+    const storyboardImage = await prisma.storyboardImage.update({
+      where: { id: storyboardImageId },
+      data,
+      include: { imageVariants: true },
+    });
+    res.json({ success: true, data: storyboardImage });
+  } catch (error) {
+    next(error);
+  }
+});
+
+scriptsRouter.delete('/:scriptId/episodes/:episodeId/storyboard-images/:storyboardImageId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { episodeId, storyboardImageId } = req.params;
+    if (!(await validateStoryboardImageExists(episodeId, storyboardImageId))) {
+      return res.status(404).json({ success: false, error: '分镜图不存在' });
+    }
+    await prisma.storyboardImage.delete({ where: { id: storyboardImageId } });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+scriptsRouter.delete('/:scriptId/episodes/:episodeId/storyboard-images', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId, episodeId } = req.params;
+    if (!(await validateEpisodeExists(scriptId, episodeId))) {
+      return res.status(404).json({ success: false, error: '剧集不存在' });
+    }
+    await prisma.storyboardImage.deleteMany({ where: { episodeId } });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const reorderStoryboardImagesSchema = z.object({
+  storyboardImageIds: z.array(z.string()),
+});
+
+scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboard-images-reorder', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId, episodeId } = req.params;
+    if (!(await validateEpisodeExists(scriptId, episodeId))) {
+      return res.status(404).json({ success: false, error: '剧集不存在' });
+    }
+    const { storyboardImageIds } = reorderStoryboardImagesSchema.parse(req.body);
+    await prisma.$transaction(
+      storyboardImageIds.map((id, index) =>
+        prisma.storyboardImage.update({ where: { id }, data: { sceneNumber: index + 1 } })
+      )
+    );
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
+// ============ 分镜图副本 CRUD ============
+
+scriptsRouter.get('/:scriptId/episodes/:episodeId/storyboard-images/:storyboardImageId/variants/:variantId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { variantId } = req.params;
+    const variant = await prisma.imageVariant.findUnique({ where: { id: variantId } });
+    if (!variant) return res.status(404).json({ success: false, error: '副本不存在' });
+    res.json({ success: true, data: variant });
+  } catch (error) {
+    next(error);
+  }
+});
+
+scriptsRouter.post('/:scriptId/episodes/:episodeId/storyboard-images/:storyboardImageId/variants', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { episodeId, storyboardImageId } = req.params;
+    if (!(await validateStoryboardImageExists(episodeId, storyboardImageId))) {
+      return res.status(404).json({ success: false, error: '分镜图不存在' });
+    }
+    const result = await prisma.$transaction(async (tx) => {
+      const variant = await tx.imageVariant.create({ data: { storyboardImageId } });
+      const variantCount = await tx.imageVariant.count({ where: { storyboardImageId } });
+      if (variantCount === 1) {
+        await tx.storyboardImage.update({
+          where: { id: storyboardImageId },
+          data: { activeImageVariantId: variant.id },
+        });
+      }
+      return variant;
+    });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const updateImageVariantSchema = z.object({
+  imageUrl: z.string().nullable().optional(),
+  thumbnailUrl: z.string().nullable().optional(),
+  progress: z.string().nullable().optional(),
+  status: z.enum(['pending', 'queued', 'generating', 'completed', 'failed']).optional(),
+  model: z.string().nullable().optional(),
+});
+
+scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboard-images/:storyboardImageId/variants/:variantId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { variantId } = req.params;
+    const data = updateImageVariantSchema.parse(req.body);
+    const variant = await prisma.imageVariant.update({ where: { id: variantId }, data });
+    res.json({ success: true, data: variant });
+  } catch (error) {
+    next(error);
+  }
+});
+
+scriptsRouter.delete('/:scriptId/episodes/:episodeId/storyboard-images/:storyboardImageId/variants/:variantId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { storyboardImageId, variantId } = req.params;
+    await prisma.$transaction(async (tx) => {
+      await tx.imageVariant.delete({ where: { id: variantId } });
+      const storyboardImage = await tx.storyboardImage.findUnique({
+        where: { id: storyboardImageId },
+        include: { imageVariants: { orderBy: { createdAt: 'asc' } } },
+      });
+      if (storyboardImage && storyboardImage.activeImageVariantId === variantId) {
+        const newActiveId = storyboardImage.imageVariants.length > 0 ? storyboardImage.imageVariants[0].id : null;
+        await tx.storyboardImage.update({
+          where: { id: storyboardImageId },
+          data: { activeImageVariantId: newActiveId },
+        });
+      }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const setActiveImageVariantSchema = z.object({ variantId: z.string() });
+
+scriptsRouter.put('/:scriptId/episodes/:episodeId/storyboard-images/:storyboardImageId/active-variant', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { storyboardImageId } = req.params;
+    const { variantId } = setActiveImageVariantSchema.parse(req.body);
+    await prisma.storyboardImage.update({
+      where: { id: storyboardImageId },
+      data: { activeImageVariantId: variantId },
     });
     res.json({ success: true });
   } catch (error) {

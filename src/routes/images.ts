@@ -163,7 +163,7 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
                 data: { status: 'failed' },
             });
             if (deducted) {
-                await refundBalance(userId, tokenCost, `${typeName}设计稿生成失败，代币已返还`);
+                await refundBalance(userId, tokenCost, `${templateName}设计稿生成失败，代币已返还`);
             }
         }
 
@@ -279,6 +279,145 @@ imagesRouter.post('/edits', upload.single('image'), async (req: AuthRequest, res
         console.error(`\n========== 图片编辑错误 (${duration}ms) ==========`);
         console.error('错误信息:', error);
         console.error('================================================\n');
+        next(error);
+    }
+});
+
+
+// ============ 分镜图生成接口 ============
+
+// 分镜图生成请求验证
+const storyboardImageSchema = z.object({
+    variantId: z.string().min(1, '副本ID不能为空'),
+    scriptId: z.string().min(1, '剧本ID不能为空'),
+    description: z.string().min(1, '分镜描述不能为空'),
+    model: z.string().default('nano-banana-2'),
+    referenceImageUrls: z.array(z.string()).optional(),
+    aspectRatio: z.enum(['16:9', '1:1', '4:3']).default('16:9'),
+});
+
+// 分镜图提示词模板
+const STORYBOARD_IMAGE_PROMPT_TEMPLATE = `【任务：请按照用户要求，多图生成9宫格动漫分镜设计稿】1.布局结构：9宫格，3行×3列。画面整体为标准分镜稿格式，每个宫格独立为一个镜头，宫格之间有清晰的白色分隔线。2.右上角预留镜头顺序编号区域（格式：No.1/No.2…）。3.所有分镜稿的宫格布局、风格、分辨率、标注区域格式完全统一，支持后续自动化拼接为长漫剧分镜序列。4.优化指令：优先保证分镜的功能性，其次提升画面的美观度，弱化非必要的背景细节，突出主体和镜头信息。5.镜头连贯，运镜丝滑。6.用气泡展示对话。如果对话过长，将其分割到若干分镜中。7.用户要求 = [`;
+
+// 分镜图生成接口
+imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const startTime = Date.now();
+    const userId = req.userId!;
+    let tokenCost = 0;
+    let deducted = false;
+
+    try {
+        const { variantId, scriptId, description, model, referenceImageUrls, aspectRatio } = storyboardImageSchema.parse(req.body);
+
+        // 计算代币消耗并扣除
+        tokenCost = getImageTokenCost(model);
+        const deductResult = await deductBalance(userId, tokenCost, '生成分镜图');
+        if (!deductResult.success) {
+            return res.status(400).json({ error: deductResult.error });
+        }
+        deducted = true;
+
+        // 更新副本状态为 generating
+        await prisma.imageVariant.update({
+            where: { id: variantId },
+            data: { status: 'generating', model, userId, tokenCost },
+        });
+
+        // 拼接完整提示词
+        const fullPrompt = `${STORYBOARD_IMAGE_PROMPT_TEMPLATE}${description.trim()}]`;
+
+        // 构建 AI 请求参数
+        const aiRequestParams: Record<string, unknown> = {
+            model,
+            prompt: fullPrompt,
+            response_format: 'url',
+        };
+
+        // 添加参考图（如果有）
+        if (referenceImageUrls && referenceImageUrls.length > 0) {
+            aiRequestParams.image = referenceImageUrls;
+        }
+
+        // 根据模型设置尺寸参数
+        if (model.includes('nano-banana-2')) {
+            aiRequestParams.image_size = '2K';
+            aiRequestParams.aspect_ratio = aspectRatio;
+        } else if (model.includes('doubao')) {
+            // 豆包模型使用 size 参数
+            const sizeMap: Record<string, string> = {
+                '16:9': '1280x720',
+                '1:1': '1024x1024',
+                '4:3': '1024x768',
+            };
+            aiRequestParams.size = sizeMap[aspectRatio] || '1280x720';
+        }
+
+        console.log(`\n========== 分镜图生成请求 ==========`);
+        console.log('副本ID:', variantId);
+        console.log('剧本ID:', scriptId);
+        console.log('分镜描述:', description);
+        console.log('参考图数量:', referenceImageUrls?.length || 0);
+        console.log('使用模型:', model);
+        console.log('比例:', aspectRatio);
+        console.log('AI请求参数:', JSON.stringify(aiRequestParams, null, 2));
+
+        // @ts-expect-error - 自定义API参数
+        const response = await openai.images.generate(aiRequestParams);
+
+        console.log('AI响应:', JSON.stringify(response, null, 2));
+
+        const duration = Date.now() - startTime;
+        console.log(`响应耗时: ${duration}ms`);
+        console.log('=====================================\n');
+
+        // 生成成功，更新数据库
+        const imageUrl = response.data?.[0]?.url;
+        if (imageUrl) {
+            await prisma.imageVariant.update({
+                where: { id: variantId },
+                data: {
+                    imageUrl,
+                    thumbnailUrl: imageUrl,
+                    status: 'completed',
+                    progress: '100',
+                },
+            });
+        } else {
+            // 没有返回图片，标记失败并返还代币
+            await prisma.imageVariant.update({
+                where: { id: variantId },
+                data: { status: 'failed' },
+            });
+            if (deducted) {
+                await refundBalance(userId, tokenCost, '分镜图生成失败，代币已返还');
+            }
+        }
+
+        res.json({
+            success: !!imageUrl,
+            images: (response.data || []).map(img => ({
+                url: img.url,
+                revisedPrompt: img.revised_prompt,
+            })),
+            balance: deductResult.balance,
+        });
+    } catch (error) {
+        // 生成失败，更新数据库状态并返还代币
+        const { variantId } = req.body || {};
+        if (variantId) {
+            await prisma.imageVariant.update({
+                where: { id: variantId },
+                data: { status: 'failed' },
+            }).catch(() => { }); // 忽略更新失败
+        }
+        if (deducted) {
+            await refundBalance(userId, tokenCost, '分镜图生成失败，代币已返还');
+        }
+
+        const duration = Date.now() - startTime;
+        console.error(`\n========== 分镜图生成错误 (${duration}ms) ==========`);
+        console.error('错误信息:', error);
+        console.error('=================================================\n');
         next(error);
     }
 });

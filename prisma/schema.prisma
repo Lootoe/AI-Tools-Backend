@@ -82,8 +82,9 @@ model Episode {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  script      Script       @relation(fields: [scriptId], references: [id], onDelete: Cascade)
-  storyboards Storyboard[]
+  script           Script            @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  storyboards      Storyboard[]
+  storyboardImages StoryboardImage[]
 
   @@map("episodes")
 }
@@ -146,4 +147,44 @@ model Asset {
 
   @@index([scriptId])
   @@map("assets")
+}
+
+// 分镜图（图片版分镜）
+model StoryboardImage {
+  id                   String   @id @default(cuid())
+  episodeId            String
+  sceneNumber          Int
+  description          String
+  referenceImageUrls   String[] // 参考图URL数组
+  aspectRatio          String?  @default("9:16") // 9:16 | 16:9 | 1:1
+  activeImageVariantId String?  // 当前选中的副本ID
+  createdAt            DateTime @default(now())
+  // 兼容旧数据
+  imageUrl             String?
+  thumbnailUrl         String?
+  status               String   @default("pending")
+  progress             String?
+
+  episode       Episode        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  imageVariants ImageVariant[]
+
+  @@map("storyboard_images")
+}
+
+// 分镜图副本
+model ImageVariant {
+  id                String   @id @default(cuid())
+  storyboardImageId String
+  imageUrl          String?
+  thumbnailUrl      String?
+  status            String   @default("pending") // pending | queued | generating | completed | failed
+  progress          String?
+  userId            String?  // 创建者用户ID，用于失败时返还代币
+  tokenCost         Int?     // 消耗的代币数量
+  model             String?  // 使用的模型
+  createdAt         DateTime @default(now())
+
+  storyboardImage StoryboardImage @relation(fields: [storyboardImageId], references: [id], onDelete: Cascade)
+
+  @@map("image_variants")
 }
