@@ -1,11 +1,18 @@
 import { Router, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
 import { openai } from '../lib/ai.js';
 import { prisma } from '../lib/prisma.js';
 import { deductBalance, refundBalance, getImageTokenCost } from '../lib/balance.js';
 import { AuthRequest } from '../middleware/auth.js';
 
 export const imagesRouter = Router();
+
+// 配置 multer 用于处理图片上传
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
 
 // ============ 提示词模板 ============
 
@@ -186,6 +193,92 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
         console.error(`\n========== 资产设计稿生成错误 (${duration}ms) ==========`);
         console.error('错误信息:', error);
         console.error('====================================================\n');
+        next(error);
+    }
+});
+
+// ============ 图片编辑接口 ============
+
+// 图片编辑接口 - 基于现有图片进行编辑
+imagesRouter.post('/edits', upload.single('image'), async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const startTime = Date.now();
+    const userId = req.userId!;
+    let tokenCost = 0;
+    let deducted = false;
+
+    try {
+        const { prompt, model = 'nano-banana-2' } = req.body;
+        const imageFile = req.file;
+
+        if (!imageFile) {
+            return res.status(400).json({ error: '请上传图片' });
+        }
+
+        if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+            return res.status(400).json({ error: '请输入编辑提示词' });
+        }
+
+        // 计算代币消耗并扣除
+        tokenCost = getImageTokenCost(model);
+        const deductResult = await deductBalance(userId, tokenCost, '编辑设计稿');
+        if (!deductResult.success) {
+            return res.status(400).json({ error: deductResult.error });
+        }
+        deducted = true;
+
+        // 将图片转换为 base64
+        const base64Image = `data:${imageFile.mimetype};base64,${imageFile.buffer.toString('base64')}`;
+
+        const aiRequestParams: Record<string, unknown> = {
+            model,
+            prompt: prompt.trim(),
+            image: [base64Image],
+            aspect_ratio: '16:9',
+            response_format: 'url',
+        };
+
+        // 根据模型设置清晰度参数
+        if (model.includes('nano-banana-2')) {
+            aiRequestParams.image_size = '2K';
+        } else if (model.includes('doubao')) {
+            aiRequestParams.size = '1024x1024';
+        }
+
+        console.log(`\n========== 图片编辑请求 ==========`);
+        console.log('使用模型:', model);
+        console.log('编辑提示词:', prompt);
+        console.log('图片大小:', imageFile.size, 'bytes');
+        console.log('图片类型:', imageFile.mimetype);
+
+        // @ts-expect-error - 自定义API参数
+        const response = await openai.images.generate(aiRequestParams);
+
+        console.log('AI响应:', JSON.stringify(response, null, 2));
+
+        const duration = Date.now() - startTime;
+        console.log(`响应耗时: ${duration}ms`);
+        console.log('==================================\n');
+
+        const imageUrl = response.data?.[0]?.url;
+
+        res.json({
+            success: !!imageUrl,
+            images: (response.data || []).map(img => ({
+                url: img.url,
+                revisedPrompt: img.revised_prompt,
+            })),
+            balance: deductResult.balance,
+        });
+    } catch (error) {
+        // 编辑失败，返还代币
+        if (deducted) {
+            await refundBalance(userId, tokenCost, '图片编辑失败，代币已返还');
+        }
+
+        const duration = Date.now() - startTime;
+        console.error(`\n========== 图片编辑错误 (${duration}ms) ==========`);
+        console.error('错误信息:', error);
+        console.error('================================================\n');
         next(error);
     }
 });
