@@ -77,6 +77,7 @@ const assetDesignSchema = z.object({
     promptTemplate: z.enum(['none', 'character', 'scene', 'prop']).default('none'),
     model: z.string().default('nano-banana-2'),
     referenceImageUrls: z.array(z.string()).optional(), // 参考图URL数组
+    aspectRatio: z.enum(['1:1', '4:3', '16:9']).default('16:9'),
 });
 
 // 统一资产设计稿生成接口
@@ -87,7 +88,7 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
     let deducted = false;
 
     try {
-        const { assetId, scriptId, description, promptTemplate, model, referenceImageUrls } = assetDesignSchema.parse(req.body);
+        const { assetId, scriptId, description, promptTemplate, model, referenceImageUrls, aspectRatio } = assetDesignSchema.parse(req.body);
         const templateName = getTemplateName(promptTemplate);
 
         // 计算代币消耗并扣除
@@ -111,7 +112,6 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
         const aiRequestParams: Record<string, unknown> = {
             model,
             prompt: fullPrompt,
-            aspect_ratio: '16:9',
             response_format: 'url',
         };
 
@@ -120,11 +120,18 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
             aiRequestParams.image = referenceImageUrls;
         }
 
-        // 根据模型设置清晰度参数
+        // 根据模型设置清晰度和比例参数
         if (model.includes('nano-banana-2')) {
             aiRequestParams.image_size = '2K';
+            aiRequestParams.aspect_ratio = aspectRatio;
         } else if (model.includes('doubao')) {
-            aiRequestParams.size = '1024x1024';
+            // 豆包模型使用 size 参数
+            const sizeMap: Record<string, string> = {
+                '16:9': '1280x720',
+                '1:1': '1024x1024',
+                '4:3': '1024x768',
+            };
+            aiRequestParams.size = sizeMap[aspectRatio] || '1280x720';
         }
 
         console.log(`\n========== ${templateName}设计稿生成请求 ==========`);
@@ -133,6 +140,7 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
         console.log('资产描述:', description);
         console.log('参考图数量:', referenceImageUrls?.length || 0);
         console.log('使用模型:', model);
+        console.log('比例:', aspectRatio);
         console.log('完整提示词:', fullPrompt);
         console.log('AI请求参数:', JSON.stringify(aiRequestParams, null, 2));
 
