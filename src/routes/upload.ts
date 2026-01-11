@@ -1,12 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
-import FormData from 'form-data';
-import https from 'https';
+import qiniu from 'qiniu';
+import { generateUploadToken, generateUploadTokenWithKey, fetchFromUrl, domain } from '../lib/qiniu.js';
 
 export const uploadRouter = Router();
-
-// ImgBB API
-const IMGBB_API_KEY = 'c46155dfd4520726df5066d18655cc53';
 
 // 配置 multer 存储在内存中
 const upload = multer({
@@ -14,55 +11,42 @@ const upload = multer({
   limits: { fileSize: 32 * 1024 * 1024 }, // 32MB
 });
 
-// ImgBB API 响应类型
-interface ImgBBResponse {
-  success: boolean;
-  status: number;
-  data?: {
-    url: string;
-    display_url: string;
-    thumb?: {
-      url: string;
-    };
-  };
-  error?: {
-    message: string;
-  };
+// 生成文件名
+function generateKey(originalName: string, prefix: string = 'uploads'): string {
+  const ext = originalName.split('.').pop() || 'jpg';
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 8);
+  return `${prefix}/${timestamp}-${random}.${ext}`;
 }
 
-// 使用 https 模块发送 FormData
-function uploadToImgBB(formData: FormData): Promise<ImgBBResponse> {
-  return new Promise((resolve, reject) => {
-    const req = https.request(
-      {
-        hostname: 'api.imgbb.com',
-        port: 443,
-        path: `/1/upload?key=${IMGBB_API_KEY}`,
-        method: 'POST',
-        headers: formData.getHeaders(),
-      },
-      (res) => {
-        let data = '';
-        res.on('data', (chunk) => (data += chunk));
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(data));
-          } catch {
-            reject(new Error(`无法解析响应: ${data.substring(0, 200)}`));
-          }
-        });
-      }
-    );
+// 获取上传凭证（前端直传用）
+uploadRouter.get('/token', (req: Request, res: Response) => {
+  try {
+    const { filename, prefix = 'uploads' } = req.query;
 
-    req.on('error', reject);
-    formData.pipe(req);
-  });
-}
+    let result;
+    if (filename && typeof filename === 'string') {
+      const key = generateKey(filename, prefix as string);
+      result = generateUploadTokenWithKey(key);
+    } else {
+      result = generateUploadToken();
+    }
 
-// 上传图片到 ImgBB
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error('生成上传凭证失败:', error);
+    res.status(500).json({ error: '生成上传凭证失败' });
+  }
+});
+
+// 服务端上传图片到七牛云
 uploadRouter.post('/image', upload.single('image'), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = req.file;
+    const prefix = (req.body.prefix as string) || 'uploads';
 
     console.log('=== 收到上传请求 ===');
     console.log('文件:', file?.originalname, file?.size, 'bytes');
@@ -71,34 +55,72 @@ uploadRouter.post('/image', upload.single('image'), async (req: Request, res: Re
       return res.status(400).json({ error: '请提供图片文件' });
     }
 
-    // 构建 FormData
-    const formData = new FormData();
-    formData.append('image', file.buffer, {
-      filename: file.originalname,
-      contentType: file.mimetype,
+    const key = generateKey(file.originalname, prefix);
+    const { token } = generateUploadTokenWithKey(key);
+
+    // 使用七牛云 SDK 上传
+    const config = new qiniu.conf.Config();
+    // 指定存储区域（华北 z1）
+    config.zone = qiniu.zone.Zone_z1;
+
+    const formUploader = new qiniu.form_up.FormUploader(config);
+    const putExtra = new qiniu.form_up.PutExtra();
+
+    const uploadResult = await new Promise<{ key: string; hash: string }>((resolve, reject) => {
+      formUploader.put(token, key, file.buffer, putExtra, (err, body, info) => {
+        if (err) {
+          reject(err);
+        } else if (info.statusCode === 200) {
+          resolve(body);
+        } else {
+          reject(new Error(`上传失败: ${info.statusCode} - ${JSON.stringify(body)}`));
+        }
+      });
     });
 
-    console.log('=== 发送请求到 ImgBB ===');
+    const url = `${domain}/${uploadResult.key}`;
+    console.log('=== 七牛云上传成功 ===');
+    console.log('图片URL:', url);
 
-    const data = await uploadToImgBB(formData);
-
-    console.log('=== ImgBB 响应 ===');
-    console.log('状态:', data.success ? '成功' : '失败');
-
-    if (data.success && data.data?.url) {
-      console.log('图片URL:', data.data.url);
-      res.json({
-        success: true,
-        url: data.data.url,
-        displayUrl: data.data.display_url,
-        thumbUrl: data.data.thumb?.url,
-      });
-    } else {
-      console.error('ImgBB upload failed:', data);
-      throw new Error(`图片上传失败: ${data.error?.message || '未知错误'}`);
-    }
+    res.json({
+      success: true,
+      url,
+      key: uploadResult.key,
+      hash: uploadResult.hash,
+    });
   } catch (error) {
     console.error('Upload error:', error);
+    next(error);
+  }
+});
+
+// 从 URL 抓取图片到七牛云（用于保存 AI 生成的图片）
+uploadRouter.post('/fetch', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { url, prefix = 'ai-generated' } = req.body;
+
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: '请提供图片 URL' });
+    }
+
+    const ext = url.split('.').pop()?.split('?')[0] || 'png';
+    const key = generateKey(`image.${ext}`, prefix);
+
+    console.log('=== 抓取图片到七牛云 ===');
+    console.log('源URL:', url);
+    console.log('目标Key:', key);
+
+    const result = await fetchFromUrl(url, key);
+
+    console.log('=== 抓取成功 ===');
+    console.log('七牛云URL:', result.url);
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Fetch error:', error);
     next(error);
   }
 });

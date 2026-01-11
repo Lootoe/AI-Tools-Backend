@@ -8,4 +8,8 @@ services:
       - AI_API_BASE_URL=${AI_API_BASE_URL}
       - AI_API_KEY=${AI_API_KEY}
       - CORS_ORIGIN=${CORS_ORIGIN}
+      - QINIU_ACCESS_KEY=${QINIU_ACCESS_KEY}
+      - QINIU_SECRET_KEY=${QINIU_SECRET_KEY}
+      - QINIU_BUCKET=${QINIU_BUCKET}
+      - QINIU_DOMAIN=${QINIU_DOMAIN}
     restart: unless-stopped
