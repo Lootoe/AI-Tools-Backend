@@ -120,9 +120,37 @@ const createScriptSchema = z.object({
 scriptsRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = createScriptSchema.parse(req.body);
-    const script = await prisma.script.create({
-      data,
-      include: { episodes: { include: { storyboards: true } } },
+    // 使用事务创建剧本、默认剧集和默认分镜
+    const script = await prisma.$transaction(async (tx) => {
+      const newScript = await tx.script.create({ data });
+      const episode = await tx.episode.create({
+        data: {
+          scriptId: newScript.id,
+          episodeNumber: 1,
+          title: '第1集',
+          content: '',
+        },
+      });
+      await tx.storyboard.create({
+        data: {
+          episodeId: episode.id,
+          sceneNumber: 1,
+          description: '',
+        },
+      });
+      // 返回完整的剧本数据
+      return tx.script.findUnique({
+        where: { id: newScript.id },
+        include: {
+          episodes: {
+            include: {
+              storyboards: { include: { variants: true }, orderBy: { sceneNumber: 'asc' } },
+              storyboardImages: { include: { imageVariants: true }, orderBy: { sceneNumber: 'asc' } },
+            },
+            orderBy: { episodeNumber: 'asc' },
+          },
+        },
+      });
     });
     res.json({ success: true, data: script });
   } catch (error) {
