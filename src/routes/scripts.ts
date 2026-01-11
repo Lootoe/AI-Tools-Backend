@@ -245,8 +245,6 @@ const createStoryboardSchema = z.object({
   sceneNumber: z.number().int().positive(),
   description: z.string().default(''),
   referenceImageUrls: z.array(z.string()).default([]),
-  aspectRatio: z.enum(['16:9', '9:16']).default('16:9'),
-  duration: z.enum(['10', '15']).default('10'),
 });
 
 scriptsRouter.post('/:scriptId/episodes/:episodeId/storyboards', async (req: Request, res: Response, next: NextFunction) => {
@@ -275,8 +273,6 @@ const updateStoryboardSchema = z.object({
   thumbnailUrl: z.string().nullable().optional(),
   taskId: z.string().nullable().optional(),
   progress: z.string().nullable().optional(),
-  aspectRatio: z.enum(['16:9', '9:16']).optional(),
-  duration: z.enum(['10', '15']).optional(),
   status: z.enum(['pending', 'queued', 'generating', 'completed', 'failed']).optional(),
   activeVariantId: z.string().nullable().optional(),
 });

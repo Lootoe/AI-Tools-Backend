@@ -97,8 +97,6 @@ model Storyboard {
   description        String
   referenceImageUrls String[] // 参考图URL数组
   referenceImageUrl  String?  // 参考图URL（单张）
-  aspectRatio        String?  @default("16:9") // 16:9 | 9:16
-  duration           String?  @default("10") // 10 | 15
   activeVariantId    String?  // 当前选中的副本ID
   createdAt          DateTime @default(now())
   // 兼容旧数据
