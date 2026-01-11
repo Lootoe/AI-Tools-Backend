@@ -122,8 +122,11 @@
 AI-Tools-Backend/
 ├── src/
 │   ├── index.ts              # 应用入口，路由注册
+│   ├── config/               # 配置文件
+│   │   └── prompts.json      # 提示词模板配置
 │   ├── routes/               # API 路由
 │   │   ├── auth.ts           # 认证（注册/登录/验证码）
+│   │   ├── config.ts         # 配置接口（提示词模板列表）
 │   │   ├── scripts.ts        # 剧本/剧集/分镜/副本 CRUD
 │   │   ├── images.ts         # 图片生成（资产设计稿、分镜图）
 │   │   ├── videos.ts         # 视频生成（Sora2 API）
@@ -134,6 +137,7 @@ AI-Tools-Backend/
 │   │   ├── ai.ts             # OpenAI SDK 封装
 │   │   ├── balance.ts        # 余额扣除/退款（带事务锁）
 │   │   ├── email.ts          # 邮件发送
+│   │   ├── prompts.ts        # 提示词配置读取工具
 │   │   └── videoStatusPoller.ts  # 视频状态轮询服务
 │   └── middleware/           # 中间件
 │       ├── auth.ts           # JWT 认证
@@ -198,7 +202,12 @@ VerificationCode (邮箱验证码)
 | GET | `/me` | 获取当前用户信息 | 是 |
 | GET | `/balance-records` | 获取余额变动记录 | 是 |
 
-### 5.2 剧本 `/api/scripts`
+### 5.2 配置 `/api/config`
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | `/prompt-templates?category=video\|storyboardImage\|asset` | 获取指定分类的提示词模板列表 | 否 |
+
+### 5.3 剧本 `/api/scripts`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | 获取所有剧本 |
@@ -208,14 +217,14 @@ VerificationCode (邮箱验证码)
 | DELETE | `/:id` | 删除剧本 |
 | POST | `/batch-delete` | 批量删除剧本 |
 
-### 5.3 剧集 `/api/scripts/:scriptId/episodes`
+### 5.4 剧集 `/api/scripts/:scriptId/episodes`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/` | 创建剧集 |
 | PUT | `/:episodeId` | 更新剧集 |
 | DELETE | `/:episodeId` | 删除剧集 |
 
-### 5.4 分镜（视频）`/api/scripts/:scriptId/episodes/:episodeId/storyboards`
+### 5.5 分镜（视频）`/api/scripts/:scriptId/episodes/:episodeId/storyboards`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/` | 创建分镜 |
@@ -224,7 +233,7 @@ VerificationCode (邮箱验证码)
 | DELETE | `/` | 清空所有分镜 |
 | PUT | `/../storyboards-reorder` | 重新排序 |
 
-### 5.5 分镜副本（视频）`.../storyboards/:id/variants`
+### 5.6 分镜副本（视频）`.../storyboards/:id/variants`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/:variantId` | 获取副本详情 |
@@ -233,17 +242,17 @@ VerificationCode (邮箱验证码)
 | DELETE | `/:variantId` | 删除副本 |
 | PUT | `/../active-variant` | 设置激活副本 |
 
-### 5.6 分镜图（图片）`/api/scripts/:scriptId/episodes/:episodeId/storyboard-images`
+### 5.7 分镜图（图片）`/api/scripts/:scriptId/episodes/:episodeId/storyboard-images`
 与分镜（视频）结构相同，路径替换为 `storyboard-images`
 
-### 5.7 图片生成 `/api/images`
+### 5.8 图片生成 `/api/images`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/asset-design` | 生成资产设计稿 |
 | POST | `/storyboard-image` | 生成分镜图 |
 | POST | `/edits` | 编辑现有图片 |
 
-### 5.8 视频生成 `/api/videos`
+### 5.9 视频生成 `/api/videos`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/generations` | 生成视频 |
@@ -253,7 +262,7 @@ VerificationCode (邮箱验证码)
 | POST | `/remix/:taskId/variant` | 混剪并创建副本 |
 | GET | `/capture-frame` | 截取视频帧 |
 
-### 5.9 资产 `/api/scripts/:scriptId/assets`
+### 5.10 资产 `/api/scripts/:scriptId/assets`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | 获取所有资产 |
@@ -306,10 +315,17 @@ TOKEN_COSTS = {
 5. 成功：保存 imageUrl；失败：退款
 ```
 
-### 6.5 提示词模板
-- `character`: 角色设计稿（配色、多角度、细节、动作、表情）
-- `scene`: 场景设计稿（基础信息、多视角、细节元素）
-- `prop`: 物品设计稿（材质、多视角、细节）
+### 6.5 提示词配置
+提示词模板已从代码中提取到独立配置文件 `src/config/prompts.json`，按功能分类：
+- `video`: 分镜视频提示词模板
+- `storyboardImage`: 分镜图提示词模板
+- `asset`: 资产设计稿提示词模板
+
+每个模板包含 `id`、`label`、`description`、`prompt` 字段。
+
+前端通过 `GET /api/config/prompt-templates?category=xxx` 获取指定分类的模板列表，动态渲染下拉选项。
+
+> 更新于 2026-01-11：提示词模板从代码硬编码改为 JSON 配置文件，按 video/storyboardImage/asset 分类
 
 ---
 
@@ -396,3 +412,4 @@ VIDEO_MAX_POLL_DURATION=3600000
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.0.0 | 2026-01-11 | 初始版本，包含完整产品需求描述 |
+| 1.0.1 | 2026-01-11 | 提示词模板从代码硬编码改为 JSON 配置文件，按 video/storyboardImage/asset 分类 |
