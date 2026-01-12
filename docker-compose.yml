@@ -4,14 +4,14 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=${DB_USER:-postgres}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=${DB_NAME:-ai_tools}
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=Bd20001004
+      - POSTGRES_DB=ai_tools
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,22 +20,8 @@ services:
     build: .
     ports:
       - "8686:3000"
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@db:5432/${DB_NAME:-ai_tools}
-      - AI_API_BASE_URL=${AI_API_BASE_URL}
-      - AI_API_KEY=${AI_API_KEY}
-      - CORS_ORIGIN=${CORS_ORIGIN}
-      - JWT_SECRET=${JWT_SECRET}
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASS=${SMTP_PASS}
-      - SMTP_FROM=${SMTP_FROM}
-      - QINIU_ACCESS_KEY=${QINIU_ACCESS_KEY}
-      - QINIU_SECRET_KEY=${QINIU_SECRET_KEY}
-      - QINIU_BUCKET=${QINIU_BUCKET}
-      - QINIU_DOMAIN=${QINIU_DOMAIN}
+    env_file:
+      - .env.production
     depends_on:
       db:
         condition: service_healthy

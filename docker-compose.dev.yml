@@ -5,23 +5,8 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - "8686:3000"
-    environment:
-      - NODE_ENV=development
-      - AI_API_BASE_URL=${AI_API_BASE_URL}
-      - AI_API_KEY=${AI_API_KEY}
-      # 本地开发允许多个来源（前端 Vite 默认端口 5173）
-      - CORS_ORIGIN=http://localhost:5173
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ai_tools?schema=public
-      - JWT_SECRET=${JWT_SECRET}
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASS=${SMTP_PASS}
-      - SMTP_FROM=${SMTP_FROM}
-      - QINIU_ACCESS_KEY=${QINIU_ACCESS_KEY}
-      - QINIU_SECRET_KEY=${QINIU_SECRET_KEY}
-      - QINIU_BUCKET=${QINIU_BUCKET}
-      - QINIU_DOMAIN=${QINIU_DOMAIN}
+    env_file:
+      - .env.development
     volumes:
       - ./src:/app/src
       - ./prisma:/app/prisma
