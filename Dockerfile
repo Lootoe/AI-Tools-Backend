@@ -3,13 +3,17 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# 安装构建依赖
+RUN apk add --no-cache openssl openssl-dev
+
 COPY package*.json ./
 
 RUN npm ci
 
 COPY . .
 
-# 生成 Prisma Client
+# 生成 Prisma Client（包含正确的二进制文件）
+ENV PRISMA_CLI_BINARY_TARGETS=linux-musl-openssl-3.0.x
 RUN npx prisma generate
 
 RUN npm run build
@@ -21,20 +25,20 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# 安装 ffmpeg（用于视频截屏功能）
-RUN apk add --no-cache ffmpeg
+# 安装运行时依赖
+RUN apk add --no-cache ffmpeg openssl
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 expressjs
-
+# 复制构建产物
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 
-USER expressjs
+# 复制 node_modules（包含 Prisma Client 和引擎）
+COPY --from=builder /app/node_modules ./node_modules
+
+# 设置目录权限
+RUN chmod -R 755 /app/node_modules/.prisma
 
 EXPOSE 3000
 
-# 启动时自动执行数据库迁移
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["node", "dist/index.js"]
