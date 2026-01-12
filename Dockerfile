@@ -21,15 +21,20 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# 安装 ffmpeg 和 openssl（Prisma 需要）
-RUN apk add --no-cache ffmpeg openssl
+# 安装 ffmpeg（用于视频截屏功能）
+RUN apk add --no-cache ffmpeg
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 expressjs
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/prisma ./prisma
 
-# 以 root 用户执行迁移，然后启动应用
+USER expressjs
+
 EXPOSE 3000
 
+# 启动时自动执行数据库迁移
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
