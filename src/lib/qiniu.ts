@@ -75,7 +75,7 @@ export function getFileUrl(key: string, isPrivate = false, expires = 3600): stri
  */
 export function deleteFile(key: string): Promise<void> {
     return new Promise((resolve, reject) => {
-        bucketManager.delete(bucket, key, (err) => (err ? reject(err) : resolve()));
+        bucketManager.delete(bucket, key, (err, _respBody, _respInfo) => (err ? reject(err) : resolve()));
     });
 }
 
