@@ -9,8 +9,8 @@ configRouter.get('/prompt-templates', (req: Request, res: Response) => {
     try {
         const category = req.query.category as PromptCategory;
 
-        if (!category || !['video', 'storyboardImage', 'asset'].includes(category)) {
-            return res.status(400).json({ error: '请指定有效的 category 参数：video, storyboardImage, asset' });
+        if (!category || !['video', 'storyboardImage', 'asset', 'character'].includes(category)) {
+            return res.status(400).json({ error: '请指定有效的 category 参数：video, storyboardImage, asset, character' });
         }
 
         const templates = getPromptTemplates(category);

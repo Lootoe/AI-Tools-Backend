@@ -413,6 +413,122 @@ videosRouter.post('/remix/:taskId/variant', async (req: AuthRequest, res: Respon
   }
 });
 
+// 角色视频生成请求验证
+const characterToVideoSchema = z.object({
+  prompt: z.string().min(1, '角色设定不能为空'),
+  promptTemplateId: z.string().default('character-default'),
+  model: z.literal('sora-2').default('sora-2'),
+  aspect_ratio: z.enum(['16:9', '9:16']).default('9:16'),
+  duration: z.enum(['10', '15']).default('15'),
+  referenceImageUrl: z.string().optional(),
+  characterId: z.string().min(1, '角色ID不能为空'),
+});
+
+// 角色生成视频
+videosRouter.post('/character-to-video', async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+  const userId = req.userId!;
+  const tokenCost = TOKEN_COSTS.VIDEO_STORYBOARD;
+
+  try {
+    const { prompt, promptTemplateId, model, aspect_ratio, duration, referenceImageUrl, characterId } = characterToVideoSchema.parse(req.body);
+
+    // 扣除代币
+    const deductResult = await deductBalance(userId, tokenCost, '生成角色视频');
+    if (!deductResult.success) {
+      return res.status(400).json({ error: deductResult.error });
+    }
+
+    // 更新 character 状态为 generating
+    await prisma.character.update({
+      where: { id: characterId },
+      data: { userId, tokenCost, status: 'generating', progress: '0' },
+    }).catch(() => { /* 静默失败 */ });
+
+    // 构建最终的 prompt
+    let finalPrompt = prompt;
+    if (promptTemplateId !== 'character-none') {
+      const characterTemplate = getPromptById('character', promptTemplateId);
+      if (characterTemplate) {
+        finalPrompt = characterTemplate + '\n\n' + prompt;
+      }
+    }
+
+    const requestBody: Record<string, unknown> = {
+      prompt: finalPrompt,
+      model,
+      aspect_ratio,
+      duration,
+      private: false,
+    };
+
+    // 如果有参考图，添加到请求中
+    if (referenceImageUrl) {
+      requestBody.images = [referenceImageUrl];
+    }
+
+    console.log('\n========== 角色生成视频 ==========');
+    console.log('发送请求体:', JSON.stringify(requestBody, null, 2));
+
+    // 调用 Sora2 API
+    const response = await fetch(`${SORA2_API_BASE}/v2/videos/generations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.AI_API_KEY}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('角色生成视频 API 错误:', errorText);
+      // API 调用失败，返还代币
+      await refundBalance(userId, tokenCost, '角色视频生成失败，代币已返还');
+      // 更新 character 状态为失败
+      await prisma.character.update({
+        where: { id: characterId },
+        data: { status: 'failed' },
+      }).catch(() => { /* 静默失败 */ });
+      throw new Error(`角色生成视频 API 调用失败: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json() as { task_id?: string; id?: string;[key: string]: unknown };
+
+    const duration_ms = Date.now() - startTime;
+    console.log(`响应耗时: ${duration_ms}ms`);
+    console.log('响应结果:', JSON.stringify(data, null, 2));
+    console.log('==================================\n');
+
+    // 保存 taskId 到数据库并启动后端轮询
+    const taskId = data.task_id || data.id;
+    if (taskId) {
+      try {
+        await prisma.character.update({
+          where: { id: characterId },
+          data: { taskId },
+        });
+        console.log(`已保存 taskId ${taskId} 到 character ${characterId}`);
+      } catch (err) {
+        console.error('保存 taskId 失败:', err);
+      }
+      startPolling(taskId, characterId, 'character');
+    }
+
+    res.json({
+      success: true,
+      data,
+      balance: deductResult.balance,
+    });
+  } catch (error) {
+    const duration_ms = Date.now() - startTime;
+    console.error(`\n========== 角色生成视频错误 (${duration_ms}ms) ==========`);
+    console.error('错误信息:', error);
+    console.error('====================================================\n');
+    next(error);
+  }
+});
+
 
 // 视频截屏 - 使用 ffmpeg 提取指定时间点的帧，直接返回图片文件流
 videosRouter.get('/capture-frame', async (req: Request, res: Response, next: NextFunction) => {

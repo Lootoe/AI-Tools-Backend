@@ -187,3 +187,24 @@ model ImageVariant {
 
   @@map("image_variants")
 }
+
+// Sora2角色
+model Character {
+  id                String   @id @default(cuid())
+  scriptId          String
+  name              String   // 角色姓名
+  description       String   // 角色设定
+  referenceImageUrl String?  // 参考图URL（1张）
+  videoUrl          String?  // 生成的角色视频
+  thumbnailUrl      String?  // 视频缩略图
+  taskId            String?  // Sora2任务ID（用于轮询）
+  progress          String?  // 生成进度
+  status            String   @default("pending") // pending | queued | generating | completed | failed
+  userId            String?  // 用于失败时返还代币
+  tokenCost         Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([scriptId])
+  @@map("characters")
+}

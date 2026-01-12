@@ -62,6 +62,26 @@ export const promptsConfig = {
             prompt: '',
         },
     ],
+    character: [
+        {
+            id: 'character-default',
+            label: '角色视频模板',
+            description: '以参考图中的角色为主体，生成角色动态视频',
+            prompt: '以第1张参考图中的角色为主体，保持角色外观、服装、配色完全一致，生成角色动态视频。',
+        },
+        {
+            id: 'character-action',
+            label: '角色动作模板',
+            description: '生成角色特定动作的视频',
+            prompt: '以第1张参考图中的角色为主体，保持角色外观完全一致，根据以下动作描述生成流畅的角色动态视频：',
+        },
+        {
+            id: 'character-none',
+            label: '无模板',
+            description: '直接使用角色设定作为提示词',
+            prompt: '',
+        },
+    ],
 } as const;
 
 export type PromptCategory = keyof typeof promptsConfig;

@@ -53,7 +53,17 @@
 - **参考图管理**：支持上传多张参考图
 - **设计稿编辑**：基于已生成图片进行 AI 编辑修改
 
-#### 1.3.6 代币系统
+#### 1.3.6 Sora2角色视频生成
+- **角色管理**：创建、编辑、删除角色
+- **角色设定**：输入角色姓名、角色设定描述
+- **参考图**：支持上传1张参考图或关联资产图片
+- **视频生成**：调用 Sora2 API 生成角色动态视频
+- **提示词模板**：内置角色视频专业提示词模板
+- **视频预览**：实时预览生成的角色视频
+
+> 更新于 2026-01-12：新增 Sora2 角色视频生成功能
+
+#### 1.3.7 代币系统
 - **代币消耗**：
   - 视频生成：3 代币/次
   - 图片生成（Nano Banana 2）：4 代币/次
@@ -123,7 +133,7 @@ AI-Tools-Backend/
 ├── src/
 │   ├── index.ts              # 应用入口，路由注册
 │   ├── config/               # 配置文件
-│   │   └── prompts.json      # 提示词模板配置
+│   │   └── prompts.ts        # 提示词模板配置
 │   ├── routes/               # API 路由
 │   │   ├── auth.ts           # 认证（注册/登录/验证码）
 │   │   ├── config.ts         # 配置接口（提示词模板列表）
@@ -131,6 +141,7 @@ AI-Tools-Backend/
 │   │   ├── images.ts         # 图片生成（资产设计稿、分镜图）
 │   │   ├── videos.ts         # 视频生成（Sora2 API）
 │   │   ├── assets.ts         # 资产管理
+│   │   ├── characters.ts     # 角色管理
 │   │   └── upload.ts         # 文件上传（ImgBB）
 │   ├── lib/                  # 工具库
 │   │   ├── prisma.ts         # Prisma 客户端
@@ -138,7 +149,7 @@ AI-Tools-Backend/
 │   │   ├── balance.ts        # 余额扣除/退款（带事务锁）
 │   │   ├── email.ts          # 邮件发送
 │   │   ├── prompts.ts        # 提示词配置读取工具
-│   │   └── videoStatusPoller.ts  # 视频状态轮询服务
+│   │   └── videoStatusPoller.ts  # 视频状态轮询服务（支持分镜视频和角色视频）
 │   └── middleware/           # 中间件
 │       ├── auth.ts           # JWT 认证
 │       ├── errorHandler.ts   # 错误处理
@@ -166,7 +177,8 @@ Script (剧本)
   │   │   └── StoryboardVariant (视频副本)
   │   └── StoryboardImage (分镜-图片)
   │       └── ImageVariant (图片副本)
-  └── Asset (资产：角色/场景/物品)
+  ├── Asset (资产：角色/场景/物品)
+  └── Character (Sora2角色)
 
 VerificationCode (邮箱验证码)
 ```
@@ -189,6 +201,16 @@ VerificationCode (邮箱验证码)
 - `progress`: 生成进度百分比
 - `videoUrl` / `imageUrl`: 生成结果 URL
 
+**Character**
+- `name`: 角色姓名
+- `description`: 角色设定描述
+- `referenceImageUrl`: 参考图 URL（1张）
+- `videoUrl`: 生成的角色视频 URL
+- `taskId`: Sora2 任务 ID，用于状态轮询
+- `status`: `pending` | `queued` | `generating` | `completed` | `failed`
+
+> 更新于 2026-01-12：新增 Character 模型
+
 ---
 
 ## 五、API 端点清单
@@ -205,7 +227,9 @@ VerificationCode (邮箱验证码)
 ### 5.2 配置 `/api/config`
 | 方法 | 路径 | 说明 | 鉴权 |
 |------|------|------|------|
-| GET | `/prompt-templates?category=video\|storyboardImage\|asset` | 获取指定分类的提示词模板列表 | 否 |
+| GET | `/prompt-templates?category=video\|storyboardImage\|asset\|character` | 获取指定分类的提示词模板列表 | 否 |
+
+> 更新于 2026-01-12：新增 character 分类
 
 ### 5.3 剧本 `/api/scripts`
 | 方法 | 路径 | 说明 |
@@ -258,9 +282,12 @@ VerificationCode (邮箱验证码)
 | POST | `/generations` | 生成视频 |
 | GET | `/generations/:taskId` | 查询视频状态 |
 | POST | `/storyboard-to-video` | 分镜生成视频 |
+| POST | `/character-to-video` | 角色生成视频 |
 | POST | `/remix/:taskId` | 视频混剪 |
 | POST | `/remix/:taskId/variant` | 混剪并创建副本 |
 | GET | `/capture-frame` | 截取视频帧 |
+
+> 更新于 2026-01-12：新增 `/character-to-video` 角色视频生成接口
 
 ### 5.10 资产 `/api/scripts/:scriptId/assets`
 | 方法 | 路径 | 说明 |
@@ -270,7 +297,17 @@ VerificationCode (邮箱验证码)
 | PATCH | `/:assetId` | 更新资产 |
 | DELETE | `/:assetId` | 删除资产 |
 
-### 5.10 上传 `/api/upload`
+### 5.11 角色 `/api/scripts/:scriptId/characters`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/` | 获取所有角色 |
+| POST | `/` | 创建角色 |
+| PATCH | `/:characterId` | 更新角色 |
+| DELETE | `/:characterId` | 删除角色 |
+
+> 更新于 2026-01-12：新增角色管理 API
+
+### 5.12 上传 `/api/upload`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/image` | 上传图片到 ImgBB |
@@ -304,6 +341,21 @@ TOKEN_COSTS = {
 6. 轮询每 5 秒查询 Sora2 API 状态
 7. 状态更新写入数据库
 8. 完成后保存 videoUrl，停止轮询
+```
+
+### 6.4 角色视频生成流程
+```
+1. 前端调用 POST /api/videos/character-to-video
+2. 后端扣除代币（3代币）
+3. 后端调用 Sora2 API，获取 taskId
+4. 后端保存 taskId 到 Character
+5. 后端启动轮询（videoStatusPoller.ts，type='character'）
+6. 轮询每 5 秒查询 Sora2 API 状态
+7. 状态更新写入 Character 表
+8. 完成后保存 videoUrl，停止轮询
+```
+
+> 更新于 2026-01-12：新增角色视频生成流程
 ```
 
 ### 6.4 图片生成流程
@@ -413,3 +465,4 @@ VIDEO_MAX_POLL_DURATION=3600000
 |------|------|------|
 | 1.0.0 | 2026-01-11 | 初始版本，包含完整产品需求描述 |
 | 1.0.1 | 2026-01-11 | 提示词模板从代码硬编码改为 JSON 配置文件，按 video/storyboardImage/asset 分类 |
+| 1.0.2 | 2026-01-12 | 新增 Sora2 角色视频生成功能：Character 模型、角色 CRUD API、角色视频生成 API、character 提示词分类 |

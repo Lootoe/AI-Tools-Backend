@@ -2,6 +2,7 @@
  * 视频状态轮询服务
  * 后端独立轮询 Sora2 API，更新数据库中的视频生成状态
  * 不依赖前端请求
+ * 支持分镜视频和角色视频
  */
 
 import prisma from './prisma.js';
@@ -20,8 +21,11 @@ const STATUS_MAP: Record<string, string> = {
     'FAILURE': 'failed',
 };
 
+// 轮询类型
+type PollType = 'variant' | 'character';
+
 // 正在轮询的任务集合（避免重复轮询）
-const pollingTasks = new Map<string, { startTime: number; intervalId: NodeJS.Timeout; variantId: string }>();
+const pollingTasks = new Map<string, { startTime: number; intervalId: NodeJS.Timeout; targetId: string; type: PollType }>();
 
 /**
  * 查询单个任务的状态
@@ -89,9 +93,34 @@ async function updateVariantStatus(
 }
 
 /**
- * 生成失败时返还代币
+ * 更新 character 状态到数据库
  */
-async function refundOnFailure(variantId: string, taskId: string): Promise<void> {
+async function updateCharacterStatus(
+    characterId: string,
+    status: string,
+    progress?: string,
+    videoUrl?: string,
+    thumbnailUrl?: string
+): Promise<void> {
+    try {
+        await prisma.character.update({
+            where: { id: characterId },
+            data: {
+                status,
+                progress,
+                ...(videoUrl && { videoUrl }),
+                ...(thumbnailUrl && { thumbnailUrl }),
+            },
+        });
+    } catch {
+        // 静默失败
+    }
+}
+
+/**
+ * 生成失败时返还代币（分镜视频）
+ */
+async function refundVariantOnFailure(variantId: string, taskId: string): Promise<void> {
     try {
         const variant = await prisma.storyboardVariant.findUnique({
             where: { id: variantId },
@@ -113,6 +142,30 @@ async function refundOnFailure(variantId: string, taskId: string): Promise<void>
 }
 
 /**
+ * 生成失败时返还代币（角色视频）
+ */
+async function refundCharacterOnFailure(characterId: string, taskId: string): Promise<void> {
+    try {
+        const character = await prisma.character.findUnique({
+            where: { id: characterId },
+            select: { userId: true, tokenCost: true },
+        });
+
+        if (character?.userId && character?.tokenCost) {
+            await refundBalance(
+                character.userId,
+                character.tokenCost,
+                '角色视频生成失败，代币已返还',
+                taskId
+            );
+            console.log(`已返还用户 ${character.userId} 代币 ${character.tokenCost}`);
+        }
+    } catch (error) {
+        console.error('返还代币失败:', error);
+    }
+}
+
+/**
  * 停止轮询某个任务
  */
 function stopPolling(taskId: string): void {
@@ -126,7 +179,7 @@ function stopPolling(taskId: string): void {
 /**
  * 开始轮询某个任务
  */
-export function startPolling(taskId: string, variantId: string): void {
+export function startPolling(taskId: string, targetId: string, type: PollType = 'variant'): void {
     // 如果已经在轮询，跳过
     if (pollingTasks.has(taskId)) {
         return;
@@ -137,8 +190,13 @@ export function startPolling(taskId: string, variantId: string): void {
     const poll = async () => {
         // 检查是否超时
         if (Date.now() - startTime > MAX_POLL_DURATION) {
-            await updateVariantStatus(variantId, 'failed');
-            await refundOnFailure(variantId, taskId);
+            if (type === 'variant') {
+                await updateVariantStatus(targetId, 'failed');
+                await refundVariantOnFailure(targetId, taskId);
+            } else {
+                await updateCharacterStatus(targetId, 'failed');
+                await refundCharacterOnFailure(targetId, taskId);
+            }
             stopPolling(taskId);
             return;
         }
@@ -147,19 +205,34 @@ export function startPolling(taskId: string, variantId: string): void {
         if (!result) return;
 
         const dbStatus = STATUS_MAP[result.status] || 'generating';
-        await updateVariantStatus(
-            variantId,
-            dbStatus,
-            result.progress,
-            result.videoUrl,
-            result.thumbnailUrl
-        );
+
+        if (type === 'variant') {
+            await updateVariantStatus(
+                targetId,
+                dbStatus,
+                result.progress,
+                result.videoUrl,
+                result.thumbnailUrl
+            );
+        } else {
+            await updateCharacterStatus(
+                targetId,
+                dbStatus,
+                result.progress,
+                result.videoUrl,
+                result.thumbnailUrl
+            );
+        }
 
         // 如果任务完成或失败，停止轮询
         if (result.status === 'SUCCESS' || result.status === 'FAILURE') {
             // 失败时返还代币
             if (result.status === 'FAILURE') {
-                await refundOnFailure(variantId, taskId);
+                if (type === 'variant') {
+                    await refundVariantOnFailure(targetId, taskId);
+                } else {
+                    await refundCharacterOnFailure(targetId, taskId);
+                }
             }
             stopPolling(taskId);
         }
@@ -170,7 +243,7 @@ export function startPolling(taskId: string, variantId: string): void {
 
     // 设置定时轮询
     const intervalId = setInterval(poll, POLL_INTERVAL);
-    pollingTasks.set(taskId, { startTime, intervalId, variantId });
+    pollingTasks.set(taskId, { startTime, intervalId, targetId, type });
 }
 
 /**
@@ -188,7 +261,21 @@ export async function resumePendingPolls(): Promise<void> {
 
         for (const variant of pendingVariants) {
             if (variant.taskId) {
-                startPolling(variant.taskId, variant.id);
+                startPolling(variant.taskId, variant.id, 'variant');
+            }
+        }
+
+        // 查找所有状态为 queued 或 generating 且有 taskId 的 characters
+        const pendingCharacters = await prisma.character.findMany({
+            where: {
+                status: { in: ['queued', 'generating'] },
+                taskId: { not: null },
+            },
+        });
+
+        for (const character of pendingCharacters) {
+            if (character.taskId) {
+                startPolling(character.taskId, character.id, 'character');
             }
         }
     } catch {
