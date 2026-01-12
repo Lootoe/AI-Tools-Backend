@@ -67,7 +67,12 @@ export function generateUploadTokenWithKey(key: string, expires: number = 3600) 
  */
 export function getFileUrl(key: string, isPrivate = false, expires = 3600): string {
     const baseUrl = `${domain}/${key}`;
-    return isPrivate ? bucketManager.privateDownloadUrl(baseUrl, expires) : baseUrl;
+    if (isPrivate) {
+        const deadline = Math.floor(Date.now() / 1000) + expires;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (bucketManager as any).privateDownloadUrl(baseUrl, deadline);
+    }
+    return baseUrl;
 }
 
 /**
