@@ -70,7 +70,7 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
 
         // 根据模型设置清晰度和比例参数
         if (model.includes('nano-banana-2')) {
-            aiRequestParams.image_size = '2K';
+            aiRequestParams.image_size = '1K';
             aiRequestParams.aspect_ratio = aspectRatio;
         } else if (model.includes('doubao')) {
             // 豆包模型使用 size 参数
@@ -195,7 +195,7 @@ imagesRouter.post('/edits', upload.single('image'), async (req: AuthRequest, res
 
         // 根据模型设置清晰度参数
         if (model.includes('nano-banana-2')) {
-            aiRequestParams.image_size = '2K';
+            aiRequestParams.image_size = '1K';
         } else if (model.includes('doubao')) {
             aiRequestParams.size = '1024x1024';
         }
@@ -295,7 +295,7 @@ imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, n
 
         // 根据模型设置尺寸参数
         if (model.includes('nano-banana-2')) {
-            aiRequestParams.image_size = '2K';
+            aiRequestParams.image_size = '1K';
             aiRequestParams.aspect_ratio = aspectRatio;
         } else if (model.includes('doubao')) {
             // 豆包模型使用 size 参数
