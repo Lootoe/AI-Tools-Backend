@@ -208,8 +208,12 @@ VerificationCode (邮箱验证码)
 - `videoUrl`: 生成的角色视频 URL
 - `taskId`: Sora2 任务 ID，用于状态轮询
 - `status`: `pending` | `queued` | `generating` | `completed` | `failed`
+- `soraCharacterId`: Sora2 角色 ID（ch_xxx），用于多视频角色一致性
+- `soraUsername`: Sora2 用户名
+- `soraPermalink`: Sora2 角色主页链接
+- `soraProfilePicUrl`: Sora2 角色头像 URL
 
-> 更新于 2026-01-12：新增 Character 模型
+> 更新于 2026-01-13：新增 Sora2 角色注册字段，支持多视频角色一致性
 
 ---
 
@@ -283,11 +287,12 @@ VerificationCode (邮箱验证码)
 | GET | `/generations/:taskId` | 查询视频状态 |
 | POST | `/storyboard-to-video` | 分镜生成视频 |
 | POST | `/character-to-video` | 角色生成视频 |
+| POST | `/register-sora-character` | 注册 Sora2 角色（用于多视频角色一致性） |
 | POST | `/remix/:taskId` | 视频混剪 |
 | POST | `/remix/:taskId/variant` | 混剪并创建副本 |
 | GET | `/capture-frame` | 截取视频帧 |
 
-> 更新于 2026-01-12：新增 `/character-to-video` 角色视频生成接口
+> 更新于 2026-01-13：新增 `/register-sora-character` 角色注册接口
 
 ### 5.10 资产 `/api/scripts/:scriptId/assets`
 | 方法 | 路径 | 说明 |
@@ -355,10 +360,20 @@ TOKEN_COSTS = {
 8. 完成后保存 videoUrl，停止轮询
 ```
 
-> 更新于 2026-01-12：新增角色视频生成流程
+### 6.5 Sora2 角色注册流程（多视频角色一致性）
+```
+1. 角色视频生成完成后，用户点击"注册角色"按钮
+2. 弹出视频预览弹窗，用户选择角色出现的时间范围（1-3秒）
+3. 前端调用 POST /api/videos/register-sora-character
+4. 后端从 Character 获取 taskId
+5. 后端调用 Sora2 API: POST /sora/v1/characters { from_task, timestamps }
+6. 保存返回的 soraCharacterId、soraUsername、soraPermalink、soraProfilePicUrl
+7. 注册成功后，角色卡片显示"已认证"状态
 ```
 
-### 6.4 图片生成流程
+> 更新于 2026-01-13：新增 Sora2 角色注册流程
+
+### 6.6 图片生成流程
 ```
 1. 前端调用 POST /api/images/asset-design 或 /storyboard-image
 2. 后端扣除代币
@@ -466,3 +481,4 @@ VIDEO_MAX_POLL_DURATION=3600000
 | 1.0.0 | 2026-01-11 | 初始版本，包含完整产品需求描述 |
 | 1.0.1 | 2026-01-11 | 提示词模板从代码硬编码改为 JSON 配置文件，按 video/storyboardImage/asset 分类 |
 | 1.0.2 | 2026-01-12 | 新增 Sora2 角色视频生成功能：Character 模型、角色 CRUD API、角色视频生成 API、character 提示词分类 |
+| 1.0.3 | 2026-01-13 | 新增 Sora2 角色注册功能：Character 模型新增 sora* 字段、/register-sora-character API |

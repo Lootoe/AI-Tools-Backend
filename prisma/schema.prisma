@@ -202,6 +202,11 @@ model Character {
   status            String   @default("pending") // pending | queued | generating | completed | failed
   userId            String?  // 用于失败时返还代币
   tokenCost         Int?
+  // Sora2 角色注册信息（视频生成完成后可注册，用于多视频角色一致性）
+  soraCharacterId   String?  // Sora2 角色ID (ch_xxx)
+  soraUsername      String?  // Sora2 用户名
+  soraPermalink     String?  // Sora2 角色主页链接
+  soraProfilePicUrl String?  // Sora2 角色头像URL
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

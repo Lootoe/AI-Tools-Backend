@@ -530,6 +530,95 @@ videosRouter.post('/character-to-video', async (req: AuthRequest, res: Response,
 });
 
 
+// 注册 Sora2 角色（用于多视频角色一致性）
+const registerSoraCharacterSchema = z.object({
+  characterId: z.string().min(1, '角色ID不能为空'),
+  timestamps: z.string().min(1, '时间范围不能为空'), // 如 "1,2" 表示1-2秒
+});
+
+videosRouter.post('/register-sora-character', async (req: AuthRequest, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+
+  try {
+    const { characterId, timestamps } = registerSoraCharacterSchema.parse(req.body);
+
+    // 获取角色信息
+    const character = await prisma.character.findUnique({
+      where: { id: characterId },
+    });
+
+    if (!character) {
+      return res.status(404).json({ error: '角色不存在' });
+    }
+
+    if (!character.taskId) {
+      return res.status(400).json({ error: '角色视频尚未生成，无法注册' });
+    }
+
+    if (character.soraCharacterId) {
+      return res.status(400).json({ error: '角色已注册' });
+    }
+
+    console.log('\n========== 注册 Sora2 角色 ==========');
+    console.log('角色ID:', characterId);
+    console.log('视频任务ID:', character.taskId);
+    console.log('时间范围:', timestamps);
+
+    // 调用 Sora2 创建角色 API
+    const response = await fetch(`${SORA2_API_BASE}/sora/v1/characters`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.AI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        from_task: character.taskId,
+        timestamps,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Sora2 创建角色 API 错误:', errorText);
+      throw new Error(`Sora2 创建角色失败: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json() as {
+      id: string;
+      username: string;
+      permalink: string;
+      profile_picture_url: string;
+    };
+
+    const duration_ms = Date.now() - startTime;
+    console.log(`响应耗时: ${duration_ms}ms`);
+    console.log('响应结果:', JSON.stringify(data, null, 2));
+    console.log('=====================================\n');
+
+    // 保存角色注册信息到数据库
+    const updatedCharacter = await prisma.character.update({
+      where: { id: characterId },
+      data: {
+        soraCharacterId: data.id,
+        soraUsername: data.username,
+        soraPermalink: data.permalink,
+        soraProfilePicUrl: data.profile_picture_url,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: updatedCharacter,
+    });
+  } catch (error) {
+    const duration_ms = Date.now() - startTime;
+    console.error(`\n========== 注册 Sora2 角色错误 (${duration_ms}ms) ==========`);
+    console.error('错误信息:', error);
+    console.error('=====================================================\n');
+    next(error);
+  }
+});
+
 // 视频截屏 - 使用 ffmpeg 提取指定时间点的帧，直接返回图片文件流
 videosRouter.get('/capture-frame', async (req: Request, res: Response, next: NextFunction) => {
   try {
