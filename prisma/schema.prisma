@@ -191,27 +191,27 @@ model ImageVariant {
 
 // Sora2角色
 model Character {
-  id                     String   @id @default(cuid())
-  scriptId               String
-  name                   String   // 角色姓名
-  description            String   // 角色设定
-  referenceImageUrl      String?  // 参考图URL（1张）
-  videoUrl               String?  // 生成的角色视频
-  thumbnailUrl           String?  // 视频缩略图
-  taskId                 String?  // Sora2任务ID（用于轮询）
-  progress               String?  // 生成进度
-  status                 String   @default("pending") // pending | queued | generating | completed | failed
-  userId                 String?  // 用于失败时返还代币
-  tokenCost              Int?
-  // Sora2 角色注册信息
-  soraCharacterId        String?  // Sora2 角色 ID（如 ch_xxx）
-  soraUsername           String?  // Sora2 用户名
-  soraPermalink          String?  // Sora2 角色链接
-  soraProfilePictureUrl  String?  // Sora2 角色头像
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  scriptId              String
+  name                  String   // 角色姓名
+  description           String   // 角色设定
+  referenceImageUrl     String?  // 参考图URL（1张）
+  videoUrl              String?  // 生成的角色视频
+  thumbnailUrl          String?  // 视频缩略图
+  taskId                String?  // Sora2任务ID（用于轮询）
+  progress              String?  // 生成进度
+  status                String   @default("pending") // pending | queued | generating | completed | failed
+  userId                String?  // 用于失败时返还代币
+  tokenCost             Int?
+  // Sora2 角色注册信息（视频生成完成后可注册，用于多视频角色一致性）
+  soraCharacterId       String?  // Sora2 角色ID (ch_xxx)
+  soraUsername          String?  // Sora2 用户名
+  soraPermalink         String?  // Sora2 角色主页链接
+  soraProfilePictureUrl String?  // Sora2 角色头像URL
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  script                 Script   @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  script Script @relation(fields: [scriptId], references: [id], onDelete: Cascade)
 
   @@index([scriptId])
 }

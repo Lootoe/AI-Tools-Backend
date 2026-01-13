@@ -533,7 +533,7 @@ videosRouter.post('/character-to-video', async (req: AuthRequest, res: Response,
 // 注册 Sora2 角色（用于多视频角色一致性）
 const registerSoraCharacterSchema = z.object({
   characterId: z.string().min(1, '角色ID不能为空'),
-  timestamps: z.string().min(1, '时间戳不能为空'),
+  timestamps: z.string().min(1, '时间戳不能为空'), // 如 "1,2" 表示1-2秒
 });
 
 videosRouter.post('/register-sora-character', async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -553,6 +553,10 @@ videosRouter.post('/register-sora-character', async (req: AuthRequest, res: Resp
 
     if (!character.taskId && !character.videoUrl) {
       return res.status(400).json({ error: '角色尚未生成视频，无法注册' });
+    }
+
+    if (character.soraCharacterId) {
+      return res.status(400).json({ error: '角色已注册' });
     }
 
     console.log('\n========== 注册 Sora2 角色 ==========');

@@ -49,6 +49,10 @@ const updateCharacterSchema = z.object({
     taskId: z.string().nullable().optional(),
     progress: z.string().nullable().optional(),
     status: z.string().optional(),
+    soraCharacterId: z.string().nullable().optional(),
+    soraUsername: z.string().nullable().optional(),
+    soraPermalink: z.string().nullable().optional(),
+    soraProfilePictureUrl: z.string().nullable().optional(),
 });
 
 charactersRouter.patch('/:characterId', async (req: AuthRequest, res: Response, next: NextFunction) => {
