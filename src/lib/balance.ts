@@ -125,11 +125,13 @@ export async function refundBalance(
     }
 }
 
-// 获取用户余额记录
+// 获取用户余额记录（支持日期筛选）
 export async function getBalanceRecords(
     userId: string,
     page: number = 1,
-    pageSize: number = 20
+    pageSize: number = 20,
+    startDate?: Date,
+    endDate?: Date
 ): Promise<{
     records: Array<{
         id: string;
@@ -140,10 +142,19 @@ export async function getBalanceRecords(
         createdAt: Date;
     }>;
     total: number;
+    totalConsume: number;
 }> {
-    const [records, total] = await Promise.all([
+    const where: { userId: string; createdAt?: { gte?: Date; lte?: Date } } = { userId };
+    
+    if (startDate || endDate) {
+        where.createdAt = {};
+        if (startDate) where.createdAt.gte = startDate;
+        if (endDate) where.createdAt.lte = endDate;
+    }
+
+    const [records, total, consumeStats] = await Promise.all([
         prisma.balanceRecord.findMany({
-            where: { userId },
+            where,
             orderBy: { createdAt: 'desc' },
             skip: (page - 1) * pageSize,
             take: pageSize,
@@ -156,10 +167,18 @@ export async function getBalanceRecords(
                 createdAt: true,
             },
         }),
-        prisma.balanceRecord.count({ where: { userId } }),
+        prisma.balanceRecord.count({ where }),
+        prisma.balanceRecord.aggregate({
+            where: { ...where, type: 'consume' },
+            _sum: { amount: true },
+        }),
     ]);
 
-    return { records, total };
+    return {
+        records,
+        total,
+        totalConsume: Math.abs(consumeStats._sum.amount || 0),
+    };
 }
 
 // 检查用户余额是否足够

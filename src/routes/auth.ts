@@ -209,7 +209,7 @@ router.get('/me', async (req: Request, res: Response) => {
   }
 });
 
-// 获取余额记录
+// 获取余额记录（支持日期筛选）
 router.get('/balance-records', async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
@@ -222,14 +222,22 @@ router.get('/balance-records', async (req: Request, res: Response) => {
 
     const page = parseInt(req.query.page as string) || 1;
     const pageSize = parseInt(req.query.pageSize as string) || 20;
+    
+    // 解析日期筛选参数
+    const startDateStr = req.query.startDate as string;
+    const endDateStr = req.query.endDate as string;
+    const startDate = startDateStr ? new Date(startDateStr) : undefined;
+    // endDate 设置为当天结束时间
+    const endDate = endDateStr ? new Date(new Date(endDateStr).setHours(23, 59, 59, 999)) : undefined;
 
-    const { records, total } = await getBalanceRecords(decoded.userId, page, pageSize);
+    const { records, total, totalConsume } = await getBalanceRecords(decoded.userId, page, pageSize, startDate, endDate);
 
     res.json({
       success: true,
       data: {
         records,
         total,
+        totalConsume,
         page,
         pageSize,
         totalPages: Math.ceil(total / pageSize),
