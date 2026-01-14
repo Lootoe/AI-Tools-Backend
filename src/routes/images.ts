@@ -26,6 +26,7 @@ const assetDesignSchema = z.object({
     model: z.string().default('nano-banana-2'),
     referenceImageUrls: z.array(z.string()).optional(), // 参考图URL数组
     aspectRatio: z.enum(['1:1', '4:3', '16:9']).default('16:9'),
+    imageSize: z.enum(['1K', '2K']).default('1K'), // 图片质量
 });
 
 // 统一资产设计稿生成接口
@@ -36,7 +37,7 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
     let deducted = false;
 
     try {
-        const { assetId, description, promptTemplateId, model, referenceImageUrls, aspectRatio } = assetDesignSchema.parse(req.body);
+        const { assetId, description, promptTemplateId, model, referenceImageUrls, aspectRatio, imageSize } = assetDesignSchema.parse(req.body);
         const templateLabel = getPromptLabelById('asset', promptTemplateId) || '资产';
 
         // 计算代币消耗并扣除
@@ -70,16 +71,15 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
 
         // 根据模型设置清晰度和比例参数
         if (model.includes('nano-banana-2')) {
-            aiRequestParams.image_size = '1K';
+            aiRequestParams.image_size = imageSize; // 使用前端传入的图片质量
             aiRequestParams.aspect_ratio = aspectRatio;
         } else if (model.includes('doubao')) {
-            // 豆包模型使用 size 参数
-            const sizeMap: Record<string, string> = {
-                '16:9': '1280x720',
-                '1:1': '1024x1024',
-                '4:3': '1024x768',
+            // 豆包模型使用 size 参数，根据 imageSize 调整分辨率
+            const sizeMap: Record<string, Record<string, string>> = {
+                '1K': { '16:9': '1280x720', '1:1': '1024x1024', '4:3': '1024x768' },
+                '2K': { '16:9': '1920x1080', '1:1': '2048x2048', '4:3': '2048x1536' },
             };
-            aiRequestParams.size = sizeMap[aspectRatio] || '1280x720';
+            aiRequestParams.size = sizeMap[imageSize]?.[aspectRatio] || sizeMap['1K'][aspectRatio];
         }
 
         console.log(`\n========== ${templateLabel}设计稿生成请求 ==========`);
@@ -251,6 +251,7 @@ const storyboardImageSchema = z.object({
     model: z.string().default('nano-banana-2'),
     referenceImageUrls: z.array(z.string()).optional(),
     aspectRatio: z.enum(['16:9', '1:1', '4:3']).default('16:9'),
+    imageSize: z.enum(['1K', '2K']).default('1K'), // 图片质量
 });
 
 // 分镜图生成接口
@@ -261,7 +262,7 @@ imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, n
     let deducted = false;
 
     try {
-        const { variantId, description, promptTemplateId, model, referenceImageUrls, aspectRatio } = storyboardImageSchema.parse(req.body);
+        const { variantId, description, promptTemplateId, model, referenceImageUrls, aspectRatio, imageSize } = storyboardImageSchema.parse(req.body);
 
         // 计算代币消耗并扣除
         tokenCost = getImageTokenCost(model);
@@ -295,16 +296,15 @@ imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, n
 
         // 根据模型设置尺寸参数
         if (model.includes('nano-banana-2')) {
-            aiRequestParams.image_size = '1K';
+            aiRequestParams.image_size = imageSize; // 使用前端传入的图片质量
             aiRequestParams.aspect_ratio = aspectRatio;
         } else if (model.includes('doubao')) {
-            // 豆包模型使用 size 参数
-            const sizeMap: Record<string, string> = {
-                '16:9': '1280x720',
-                '1:1': '1024x1024',
-                '4:3': '1024x768',
+            // 豆包模型使用 size 参数，根据 imageSize 调整分辨率
+            const sizeMap: Record<string, Record<string, string>> = {
+                '1K': { '16:9': '1280x720', '1:1': '1024x1024', '4:3': '1024x768' },
+                '2K': { '16:9': '1920x1080', '1:1': '2048x2048', '4:3': '2048x1536' },
             };
-            aiRequestParams.size = sizeMap[aspectRatio] || '1280x720';
+            aiRequestParams.size = sizeMap[imageSize]?.[aspectRatio] || sizeMap['1K'][aspectRatio];
         }
 
         console.log(`\n========== 分镜图生成请求 ==========`);
