@@ -123,6 +123,7 @@ model StoryboardVariant {
   taskId       String?
   progress     String?
   status       String    @default("pending") // pending | queued | generating | completed | failed
+  failReason   String?   // 生成失败原因
   userId       String?   // 创建者用户ID，用于失败时返还代币
   tokenCost    Int?      // 消耗的代币数量
   startedAt    DateTime? // 生成开始时间
@@ -180,6 +181,7 @@ model ImageVariant {
   imageUrl          String?
   thumbnailUrl      String?
   status            String    @default("pending") // pending | queued | generating | completed | failed
+  failReason        String?   // 生成失败原因
   progress          String?
   userId            String?   // 创建者用户ID，用于失败时返还代币
   tokenCost         Int?      // 消耗的代币数量
@@ -205,6 +207,7 @@ model Character {
   taskId                String?  // Sora2任务ID（用于轮询）
   progress              String?  // 生成进度
   status                String   @default("pending") // pending | queued | generating | completed | failed
+  failReason            String?  // 生成失败原因
   userId                String?  // 用于失败时返还代币
   tokenCost             Int?
   // Sora2 角色注册信息（视频生成完成后可注册，用于多视频角色一致性）

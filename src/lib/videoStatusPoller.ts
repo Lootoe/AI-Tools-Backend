@@ -76,7 +76,8 @@ async function updateVariantStatus(
     progress?: string,
     videoUrl?: string,
     thumbnailUrl?: string,
-    isFinished?: boolean
+    isFinished?: boolean,
+    failReason?: string
 ): Promise<void> {
     try {
         await prisma.storyboardVariant.update({
@@ -87,6 +88,7 @@ async function updateVariantStatus(
                 ...(videoUrl && { videoUrl }),
                 ...(thumbnailUrl && { thumbnailUrl }),
                 ...(isFinished && { finishedAt: new Date() }),
+                ...(failReason && { failReason }),
             },
         });
     } catch {
@@ -102,7 +104,8 @@ async function updateCharacterStatus(
     status: string,
     progress?: string,
     videoUrl?: string,
-    thumbnailUrl?: string
+    thumbnailUrl?: string,
+    failReason?: string
 ): Promise<void> {
     try {
         await prisma.character.update({
@@ -112,6 +115,7 @@ async function updateCharacterStatus(
                 progress,
                 ...(videoUrl && { videoUrl }),
                 ...(thumbnailUrl && { thumbnailUrl }),
+                ...(failReason && { failReason }),
             },
         });
     } catch {
@@ -216,7 +220,8 @@ export function startPolling(taskId: string, targetId: string, type: PollType = 
                 result.progress,
                 result.videoUrl,
                 result.thumbnailUrl,
-                isFinished
+                isFinished,
+                result.failReason
             );
         } else {
             await updateCharacterStatus(
@@ -224,7 +229,8 @@ export function startPolling(taskId: string, targetId: string, type: PollType = 
                 dbStatus,
                 result.progress,
                 result.videoUrl,
-                result.thumbnailUrl
+                result.thumbnailUrl,
+                result.failReason
             );
         }
 
