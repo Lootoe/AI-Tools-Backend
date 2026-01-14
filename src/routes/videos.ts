@@ -5,7 +5,6 @@ import { startPolling } from '../lib/videoStatusPoller.js';
 import { deductBalance, refundBalance, TOKEN_COSTS } from '../lib/balance.js';
 import { AuthRequest } from '../middleware/auth.js';
 import { prisma } from '../lib/prisma.js';
-import { getPromptById } from '../lib/prompts.js';
 
 export const videosRouter = Router();
 
@@ -112,7 +111,6 @@ videosRouter.get('/generations/:taskId', async (req: Request, res: Response, nex
 // 分镜生成视频请求验证
 const storyboardToVideoSchema = z.object({
   prompt: z.string().min(1, '分镜脚本不能为空'),
-  promptTemplateId: z.string().default('video-none'),
   model: z.literal('sora-2').default('sora-2'),
   aspect_ratio: z.enum(['16:9', '9:16']).default('9:16'),
   duration: z.enum(['10', '15']).default('15'),
@@ -129,7 +127,7 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
   const tokenCost = TOKEN_COSTS.VIDEO_STORYBOARD;
 
   try {
-    const { prompt, promptTemplateId, model, aspect_ratio, duration, reference_images, first_frame_url, variantId } = storyboardToVideoSchema.parse(req.body);
+    const { prompt, model, aspect_ratio, duration, reference_images, first_frame_url, variantId } = storyboardToVideoSchema.parse(req.body);
 
     // 扣除代币
     const deductResult = await deductBalance(userId, tokenCost, '生成分镜视频');
@@ -158,16 +156,8 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
       finalImages.push(...reference_images);
     }
 
-    // 构建最终的 prompt
-    let finalPrompt = prompt;
-
-    // 如果有首帧图片且选择了视频模板，在提示词最开头添加首帧说明
-    if (first_frame_url && promptTemplateId !== 'video-none') {
-      const videoTemplate = getPromptById('video', promptTemplateId);
-      if (videoTemplate) {
-        finalPrompt = videoTemplate + '\n\n' + prompt;
-      }
-    }
+    // 直接使用用户输入的 prompt
+    const finalPrompt = prompt;
 
     const requestBody: Record<string, unknown> = {
       prompt: finalPrompt,
@@ -416,7 +406,6 @@ videosRouter.post('/remix/:taskId/variant', async (req: AuthRequest, res: Respon
 // 角色视频生成请求验证
 const characterToVideoSchema = z.object({
   prompt: z.string().min(1, '角色设定不能为空'),
-  promptTemplateId: z.string().default('character-default'),
   model: z.literal('sora-2').default('sora-2'),
   aspect_ratio: z.enum(['16:9', '9:16']).default('9:16'),
   duration: z.enum(['10', '15']).default('15'),
@@ -431,7 +420,7 @@ videosRouter.post('/character-to-video', async (req: AuthRequest, res: Response,
   const tokenCost = TOKEN_COSTS.VIDEO_STORYBOARD;
 
   try {
-    const { prompt, promptTemplateId, model, aspect_ratio, duration, referenceImageUrl, characterId } = characterToVideoSchema.parse(req.body);
+    const { prompt, model, aspect_ratio, duration, referenceImageUrl, characterId } = characterToVideoSchema.parse(req.body);
 
     // 扣除代币
     const deductResult = await deductBalance(userId, tokenCost, '生成角色视频');
@@ -445,14 +434,8 @@ videosRouter.post('/character-to-video', async (req: AuthRequest, res: Response,
       data: { userId, tokenCost, status: 'generating', progress: '0' },
     }).catch(() => { /* 静默失败 */ });
 
-    // 构建最终的 prompt
-    let finalPrompt = prompt;
-    if (promptTemplateId !== 'character-none') {
-      const characterTemplate = getPromptById('character', promptTemplateId);
-      if (characterTemplate) {
-        finalPrompt = characterTemplate + '\n\n' + prompt;
-      }
-    }
+    // 直接使用用户输入的 prompt
+    const finalPrompt = prompt;
 
     const requestBody: Record<string, unknown> = {
       prompt: finalPrompt,

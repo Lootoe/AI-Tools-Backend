@@ -14,7 +14,6 @@ import { videosRouter } from './routes/videos.js';
 import { scriptsRouter } from './routes/scripts.js';
 import { authRouter } from './routes/auth.js';
 import { assetsRouter } from './routes/assets.js';
-import { configRouter } from './routes/config.js';
 import { charactersRouter } from './routes/characters.js';
 import { resumePendingPolls, stopAllPolling } from './lib/videoStatusPoller.js';
 
@@ -59,9 +58,6 @@ app.use('/api', modelValidator);
 // API routes
 // 认证路由不需要鉴权
 app.use('/api/auth', authRouter);
-
-// 配置路由不需要鉴权（供前端获取提示词模板列表）
-app.use('/api/config', configRouter);
 
 // 以下路由需要鉴权
 app.use('/api/upload', authMiddleware, uploadRouter);

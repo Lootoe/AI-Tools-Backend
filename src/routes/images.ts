@@ -5,7 +5,6 @@ import { openai } from '../lib/ai.js';
 import { prisma } from '../lib/prisma.js';
 import { deductBalance, refundBalance, getImageTokenCost } from '../lib/balance.js';
 import { AuthRequest } from '../middleware/auth.js';
-import { getPromptById, getPromptLabelById } from '../lib/prompts.js';
 
 export const imagesRouter = Router();
 
@@ -22,7 +21,6 @@ const assetDesignSchema = z.object({
     assetId: z.string().min(1, '资产ID不能为空'),
     scriptId: z.string().min(1, '剧本ID不能为空'),
     description: z.string().min(1, '资产描述不能为空'),
-    promptTemplateId: z.string().default('asset-none'),
     model: z.string().default('nano-banana-2'),
     referenceImageUrls: z.array(z.string()).optional(), // 参考图URL数组
     aspectRatio: z.enum(['1:1', '4:3', '16:9']).default('16:9'),
@@ -37,12 +35,11 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
     let deducted = false;
 
     try {
-        const { assetId, description, promptTemplateId, model, referenceImageUrls, aspectRatio, imageSize } = assetDesignSchema.parse(req.body);
-        const templateLabel = getPromptLabelById('asset', promptTemplateId) || '资产';
+        const { assetId, description, model, referenceImageUrls, aspectRatio, imageSize } = assetDesignSchema.parse(req.body);
 
         // 计算代币消耗并扣除
         tokenCost = getImageTokenCost(model);
-        const deductResult = await deductBalance(userId, tokenCost, `生成${templateLabel}设计稿`);
+        const deductResult = await deductBalance(userId, tokenCost, '生成资产设计稿');
         if (!deductResult.success) {
             return res.status(400).json({ error: deductResult.error });
         }
@@ -54,9 +51,8 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
             data: { status: 'generating' },
         });
 
-        // 根据模板ID获取提示词并拼接
-        const template = getPromptById('asset', promptTemplateId);
-        const fullPrompt = template ? `${template}[${description.trim()}]` : description.trim();
+        // 直接使用用户输入的描述
+        const fullPrompt = description.trim();
 
         const aiRequestParams: Record<string, unknown> = {
             model,
@@ -82,9 +78,8 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
             aiRequestParams.size = sizeMap[imageSize]?.[aspectRatio] || sizeMap['1K'][aspectRatio];
         }
 
-        console.log(`\n========== ${templateLabel}设计稿生成请求 ==========`);
+        console.log(`\n========== 资产设计稿生成请求 ==========`);
         console.log('资产ID:', assetId);
-        console.log('提示词模板ID:', promptTemplateId);
         console.log('资产描述:', description);
         console.log('参考图数量:', referenceImageUrls?.length || 0);
         console.log('使用模型:', model);
@@ -119,7 +114,7 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
                 data: { status: 'failed' },
             });
             if (deducted) {
-                await refundBalance(userId, tokenCost, `${templateLabel}设计稿生成失败，代币已返还`);
+                await refundBalance(userId, tokenCost, '资产设计稿生成失败，代币已返还');
             }
         }
 
@@ -141,8 +136,7 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
             }).catch(() => { }); // 忽略更新失败
         }
         if (deducted) {
-            const templateLabel = getPromptLabelById('asset', req.body?.promptTemplateId || 'asset-none') || '资产';
-            await refundBalance(userId, tokenCost, `${templateLabel}设计稿生成失败，代币已返还`);
+            await refundBalance(userId, tokenCost, '资产设计稿生成失败，代币已返还');
         }
 
         const duration = Date.now() - startTime;
@@ -247,7 +241,6 @@ const storyboardImageSchema = z.object({
     variantId: z.string().min(1, '副本ID不能为空'),
     scriptId: z.string().min(1, '剧本ID不能为空'),
     description: z.string().min(1, '分镜描述不能为空'),
-    promptTemplateId: z.string().default('image-9grid'),
     model: z.string().default('nano-banana-2'),
     referenceImageUrls: z.array(z.string()).optional(),
     aspectRatio: z.enum(['16:9', '1:1', '4:3']).default('16:9'),
@@ -262,7 +255,7 @@ imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, n
     let deducted = false;
 
     try {
-        const { variantId, description, promptTemplateId, model, referenceImageUrls, aspectRatio, imageSize } = storyboardImageSchema.parse(req.body);
+        const { variantId, description, model, referenceImageUrls, aspectRatio, imageSize } = storyboardImageSchema.parse(req.body);
 
         // 计算代币消耗并扣除
         tokenCost = getImageTokenCost(model);
@@ -278,9 +271,8 @@ imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, n
             data: { status: 'generating', model, userId, tokenCost, startedAt: new Date() },
         });
 
-        // 从配置文件获取分镜图提示词模板并拼接
-        const template = getPromptById('storyboardImage', promptTemplateId);
-        const fullPrompt = template ? `${template}${description.trim()}]` : description.trim();
+        // 直接使用用户输入的描述
+        const fullPrompt = description.trim();
 
         // 构建 AI 请求参数
         const aiRequestParams: Record<string, unknown> = {
@@ -309,7 +301,6 @@ imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, n
 
         console.log(`\n========== 分镜图生成请求 ==========`);
         console.log('副本ID:', variantId);
-        console.log('提示词模板ID:', promptTemplateId);
         console.log('分镜描述:', description);
         console.log('参考图数量:', referenceImageUrls?.length || 0);
         console.log('使用模型:', model);
