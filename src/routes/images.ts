@@ -274,7 +274,7 @@ imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, n
         // 更新副本状态为 generating
         await prisma.imageVariant.update({
             where: { id: variantId },
-            data: { status: 'generating', model, userId, tokenCost },
+            data: { status: 'generating', model, userId, tokenCost, startedAt: new Date() },
         });
 
         // 从配置文件获取分镜图提示词模板并拼接
@@ -335,13 +335,14 @@ imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, n
                     thumbnailUrl: imageUrl,
                     status: 'completed',
                     progress: '100',
+                    finishedAt: new Date(),
                 },
             });
         } else {
             // 没有返回图片，标记失败并返还代币
             await prisma.imageVariant.update({
                 where: { id: variantId },
-                data: { status: 'failed' },
+                data: { status: 'failed', finishedAt: new Date() },
             });
             if (deducted) {
                 await refundBalance(userId, tokenCost, '分镜图生成失败，代币已返还');
@@ -362,7 +363,7 @@ imagesRouter.post('/storyboard-image', async (req: AuthRequest, res: Response, n
         if (variantId) {
             await prisma.imageVariant.update({
                 where: { id: variantId },
-                data: { status: 'failed' },
+                data: { status: 'failed', finishedAt: new Date() },
             }).catch(() => { }); // 忽略更新失败
         }
         if (deducted) {

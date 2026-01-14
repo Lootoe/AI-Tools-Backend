@@ -199,7 +199,11 @@ VerificationCode (邮箱验证码)
 **StoryboardVariant / ImageVariant**
 - `taskId`: AI API 任务 ID，用于状态轮询
 - `progress`: 生成进度百分比
+- `startedAt`: 生成开始时间
+- `finishedAt`: 生成结束时间（完成或失败）
 - `videoUrl` / `imageUrl`: 生成结果 URL
+
+> 更新于 2026-01-14：新增 startedAt、finishedAt 字段，记录生成任务的开始和结束时间
 
 **Character**
 - `name`: 角色姓名

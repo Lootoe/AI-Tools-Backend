@@ -75,7 +75,8 @@ async function updateVariantStatus(
     status: string,
     progress?: string,
     videoUrl?: string,
-    thumbnailUrl?: string
+    thumbnailUrl?: string,
+    isFinished?: boolean
 ): Promise<void> {
     try {
         await prisma.storyboardVariant.update({
@@ -85,6 +86,7 @@ async function updateVariantStatus(
                 progress,
                 ...(videoUrl && { videoUrl }),
                 ...(thumbnailUrl && { thumbnailUrl }),
+                ...(isFinished && { finishedAt: new Date() }),
             },
         });
     } catch {
@@ -191,7 +193,7 @@ export function startPolling(taskId: string, targetId: string, type: PollType = 
         // 检查是否超时
         if (Date.now() - startTime > MAX_POLL_DURATION) {
             if (type === 'variant') {
-                await updateVariantStatus(targetId, 'failed');
+                await updateVariantStatus(targetId, 'failed', undefined, undefined, undefined, true);
                 await refundVariantOnFailure(targetId, taskId);
             } else {
                 await updateCharacterStatus(targetId, 'failed');
@@ -205,6 +207,7 @@ export function startPolling(taskId: string, targetId: string, type: PollType = 
         if (!result) return;
 
         const dbStatus = STATUS_MAP[result.status] || 'generating';
+        const isFinished = result.status === 'SUCCESS' || result.status === 'FAILURE';
 
         if (type === 'variant') {
             await updateVariantStatus(
@@ -212,7 +215,8 @@ export function startPolling(taskId: string, targetId: string, type: PollType = 
                 dbStatus,
                 result.progress,
                 result.videoUrl,
-                result.thumbnailUrl
+                result.thumbnailUrl,
+                isFinished
             );
         } else {
             await updateCharacterStatus(
@@ -225,7 +229,7 @@ export function startPolling(taskId: string, targetId: string, type: PollType = 
         }
 
         // 如果任务完成或失败，停止轮询
-        if (result.status === 'SUCCESS' || result.status === 'FAILURE') {
+        if (isFinished) {
             // 失败时返还代币
             if (result.status === 'FAILURE') {
                 if (type === 'variant') {

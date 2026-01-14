@@ -141,7 +141,7 @@ videosRouter.post('/storyboard-to-video', async (req: AuthRequest, res: Response
     if (variantId) {
       await prisma.storyboardVariant.update({
         where: { id: variantId },
-        data: { userId, tokenCost, status: 'generating', progress: '0' },
+        data: { userId, tokenCost, status: 'generating', progress: '0', startedAt: new Date() },
       }).catch(() => { /* 静默失败 */ });
     }
 
@@ -343,7 +343,7 @@ videosRouter.post('/remix/:taskId/variant', async (req: AuthRequest, res: Respon
     if (variantId) {
       await prisma.storyboardVariant.update({
         where: { id: variantId },
-        data: { userId, tokenCost, status: 'generating', progress: '0' },
+        data: { userId, tokenCost, status: 'generating', progress: '0', startedAt: new Date() },
       }).catch(() => { /* 静默失败 */ });
     }
 
