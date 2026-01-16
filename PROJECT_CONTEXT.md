@@ -33,26 +33,25 @@
 
 #### 1.3.3 分镜视频生成（核心功能）
 - **分镜描述**：用户编写分镜脚本（文字描述场景内容）
-- **参考图**：可上传参考图片引导视频风格
+- **参考图**：可上传参考图片引导视频风格，或关联资产仓库中的图片
 - **视频生成**：调用 Sora2 API 生成 10s/15s 视频
 - **分镜池**：每个分镜支持生成多个视频版本（Variant）
 - **版本管理**：选择激活版本、删除不满意的版本
 - **视频编辑（Remix）**：基于已生成视频进行二次编辑
 
-#### 1.3.4 分镜图生成
-- **分镜图描述**：用户编写图片描述
-- **参考图**：支持多张参考图
-- **图片生成**：支持多种 AI 模型（Nano Banana 2、豆包）
-- **图片池**：每个分镜图支持生成多个图片版本
-- **比例选择**：支持 16:9、4:3、1:1 等比例
+> 更新于 2026-01-16：参考图支持关联资产仓库，统一参考图来源
 
-#### 1.3.5 资产管理
+#### 1.3.4 资产管理
 - **资产类型**：角色、场景、物品三类设计资产
 - **设计稿生成**：AI 生成角色设计稿（多角度、表情、动作）
 - **参考图管理**：支持上传多张参考图
 - **设计稿编辑**：基于已生成图片进行 AI 编辑修改
+- **资产画布**：无限画布系统，支持节点连接和图片生成
+- **资产仓库**：分类管理已保存的资产，支持关联到分镜视频
 
-#### 1.3.6 Sora2角色视频生成
+> 更新于 2026-01-16：新增资产画布和资产仓库系统
+
+#### 1.3.5 Sora2角色视频生成
 - **角色管理**：创建、编辑、删除角色
 - **角色设定**：输入角色姓名、角色设定描述
 - **参考图**：支持上传1张参考图或关联资产图片
@@ -61,7 +60,7 @@
 
 > 更新于 2026-01-12：新增 Sora2 角色视频生成功能
 
-#### 1.3.7 代币系统
+#### 1.3.6 代币系统
 - **代币消耗**：
   - 视频生成：3 代币/次
   - 图片生成（Nano Banana 2）：4 代币/次
@@ -168,15 +167,19 @@ User (用户)
 
 Script (剧本)
   ├── Episode (剧集)
-  │   ├── Storyboard (分镜-视频)
-  │   │   └── StoryboardVariant (视频副本)
-  │   └── StoryboardImage (分镜-图片)
-  │       └── ImageVariant (图片副本)
-  ├── Asset (资产：角色/场景/物品)
+  │   └── Storyboard (分镜-视频)
+  │       └── StoryboardVariant (视频副本)
+  ├── Canvas (画布)
+  │   ├── CanvasNode (画布节点)
+  │   └── CanvasEdge (画布连接)
+  ├── AssetCategory (资产分类)
+  │   └── SavedAsset (已保存的资产)
   └── Character (Sora2角色)
 
 VerificationCode (邮箱验证码)
 ```
+
+> 更新于 2026-01-16：删除 StoryboardImage 和 ImageVariant 模型，新增 Canvas、AssetCategory、SavedAsset 模型
 
 ### 4.2 关键字段说明
 
@@ -262,17 +265,15 @@ VerificationCode (邮箱验证码)
 | DELETE | `/:variantId` | 删除副本 |
 | PUT | `/../active-variant` | 设置激活副本 |
 
-### 5.6 分镜图（图片）`/api/scripts/:scriptId/episodes/:episodeId/storyboard-images`
-与分镜（视频）结构相同，路径替换为 `storyboard-images`
-
-### 5.7 图片生成 `/api/images`
+### 5.6 图片生成 `/api/images`
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/asset-design` | 生成资产设计稿 |
-| POST | `/storyboard-image` | 生成分镜图 |
+| POST | `/asset-design` | 生成资产设计稿（用于画布节点） |
 | POST | `/edits` | 编辑现有图片 |
 
-### 5.8 视频生成 `/api/videos`
+> 更新于 2026-01-16：删除 `/storyboard-image` 分镜图生成接口
+
+### 5.7 视频生成 `/api/videos`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/generations` | 生成视频 |
@@ -286,7 +287,7 @@ VerificationCode (邮箱验证码)
 
 > 更新于 2026-01-13：新增 `/register-sora-character` 角色注册接口
 
-### 5.9 资产 `/api/scripts/:scriptId/assets`
+### 5.8 资产 `/api/scripts/:scriptId/assets`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | 获取所有资产 |
@@ -294,7 +295,7 @@ VerificationCode (邮箱验证码)
 | PATCH | `/:assetId` | 更新资产 |
 | DELETE | `/:assetId` | 删除资产 |
 
-### 5.10 角色 `/api/scripts/:scriptId/characters`
+### 5.9 角色 `/api/scripts/:scriptId/characters`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | 获取所有角色 |
@@ -304,7 +305,7 @@ VerificationCode (邮箱验证码)
 
 > 更新于 2026-01-12：新增角色管理 API
 
-### 5.11 上传 `/api/upload`
+### 5.10 上传 `/api/upload`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/image` | 上传图片到 ImgBB |
@@ -463,3 +464,4 @@ VIDEO_MAX_POLL_DURATION=3600000
 | 1.0.4 | 2026-01-14 | 用户中心重构：删除邀请码功能，新增套餐购买选项，余额记录支持分页和日期筛选 |
 | 1.0.5 | 2026-01-14 | 图片生成接口新增 imageSize 参数，支持 1K/2K 图片质量设置 |
 | 1.0.6 | 2026-01-15 | 删除提示词模板功能：移除 config 路由、prompts 配置文件、图片/视频生成的 promptTemplateId 参数 |
+| 1.1.0 | 2026-01-16 | 完全移除分镜图功能：删除 StoryboardImage 和 ImageVariant 模型，删除所有分镜图 CRUD API 路由（scripts.ts 中约 350 行代码），删除分镜图生成 API（images.ts 中约 120 行代码），从 Episode 模型删除 storyboardImages 关系，简化数据模型和 API 结构 |
