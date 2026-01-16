@@ -68,7 +68,7 @@ app.use('/api/videos', authMiddleware, videosRouter);
 app.use('/api/scripts', authMiddleware, scriptsRouter);
 app.use('/api/scripts', authMiddleware, assetsRouter);
 app.use('/api/scripts/:scriptId/characters', authMiddleware, charactersRouter);
-app.use('/api/scripts/:scriptId/canvas', authMiddleware, canvasRouter);
+app.use('/api/scripts/:scriptId/canvases', authMiddleware, canvasRouter);
 app.use('/api/scripts/:scriptId/asset-categories', authMiddleware, assetCategoriesRouter);
 app.use('/api/scripts/:scriptId/saved-assets', authMiddleware, savedAssetsRouter);
 

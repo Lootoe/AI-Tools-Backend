@@ -169,7 +169,7 @@ Script (剧本)
   ├── Episode (剧集)
   │   └── Storyboard (分镜-视频)
   │       └── StoryboardVariant (视频副本)
-  ├── Canvas (画布)
+  ├── Canvas (画布-支持多个)
   │   ├── CanvasNode (画布节点)
   │   └── CanvasEdge (画布连接)
   ├── AssetCategory (资产分类)
@@ -180,6 +180,7 @@ VerificationCode (邮箱验证码)
 ```
 
 > 更新于 2026-01-16：删除 StoryboardImage 和 ImageVariant 模型，新增 Canvas、AssetCategory、SavedAsset 模型
+> 更新于 2026-01-17：Canvas 支持多画布，每个剧本可创建多个画布
 
 ### 4.2 关键字段说明
 
@@ -203,7 +204,14 @@ VerificationCode (邮箱验证码)
 
 > 更新于 2026-01-14：新增 startedAt、finishedAt 字段，记录生成任务的开始和结束时间
 
-**Character**
+**Canvas**
+- `scriptId`: 所属剧本 ID（支持一对多关系）
+- `name`: 画布名称
+- `viewport`: 画布视口状态 `{ x, y, zoom }`
+
+> 更新于 2026-01-17：Canvas 支持多画布，移除 scriptId 的唯一约束，添加 name 字段
+
+**CanvasNode**
 - `name`: 角色姓名
 - `description`: 角色设定描述
 - `referenceImageUrl`: 参考图 URL（1张）
@@ -305,7 +313,24 @@ VerificationCode (邮箱验证码)
 
 > 更新于 2026-01-12：新增角色管理 API
 
-### 5.10 上传 `/api/upload`
+### 5.10 画布 `/api/scripts/:scriptId/canvases`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/` | 获取所有画布 |
+| GET | `/:canvasId` | 获取单个画布 |
+| POST | `/` | 创建画布 |
+| PATCH | `/:canvasId` | 重命名画布 |
+| DELETE | `/:canvasId` | 删除画布 |
+| PUT | `/:canvasId/viewport` | 更新视口 |
+| POST | `/:canvasId/nodes` | 创建节点 |
+| PATCH | `/:canvasId/nodes/:nodeId` | 更新节点 |
+| DELETE | `/:canvasId/nodes/:nodeId` | 删除节点 |
+| POST | `/:canvasId/edges` | 创建连接 |
+| DELETE | `/:canvasId/edges/:edgeId` | 删除连接 |
+
+> 更新于 2026-01-17：新增多画布管理 API，所有操作需要 canvasId 参数
+
+### 5.11 上传 `/api/upload`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/image` | 上传图片到 ImgBB |
@@ -464,4 +489,4 @@ VIDEO_MAX_POLL_DURATION=3600000
 | 1.0.4 | 2026-01-14 | 用户中心重构：删除邀请码功能，新增套餐购买选项，余额记录支持分页和日期筛选 |
 | 1.0.5 | 2026-01-14 | 图片生成接口新增 imageSize 参数，支持 1K/2K 图片质量设置 |
 | 1.0.6 | 2026-01-15 | 删除提示词模板功能：移除 config 路由、prompts 配置文件、图片/视频生成的 promptTemplateId 参数 |
-| 1.1.0 | 2026-01-16 | 完全移除分镜图功能：删除 StoryboardImage 和 ImageVariant 模型，删除所有分镜图 CRUD API 路由（scripts.ts 中约 350 行代码），删除分镜图生成 API（images.ts 中约 120 行代码），从 Episode 模型删除 storyboardImages 关系，简化数据模型和 API 结构 |
+| 1.1.1 | 2026-01-17 | 资产画布新增多画布支持：Canvas 模型添加 name 字段，移除 scriptId 唯一约束，每个剧本可创建多个独立画布；新增画布管理 API（创建、删除、重命名、切换），所有节点和连接操作需要 canvasId 参数；数据库迁移脚本已创建 |

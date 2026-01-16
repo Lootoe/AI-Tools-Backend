@@ -151,10 +151,11 @@ model Asset {
   @@map("assets")
 }
 
-// 画布（每个剧本一个）
+// 画布（每个剧本可以有多个）
 model Canvas {
   id        String   @id @default(cuid())
-  scriptId  String   @unique
+  scriptId  String
+  name      String   @default("画布 1") // 画布名称
   viewport  Json?    // { x, y, zoom } 画布视口状态
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -162,6 +163,7 @@ model Canvas {
   nodes CanvasNode[]
   edges CanvasEdge[]
 
+  @@index([scriptId])
   @@map("canvases")
 }
 

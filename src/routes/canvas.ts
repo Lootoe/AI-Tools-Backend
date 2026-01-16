@@ -11,31 +11,16 @@ async function validateScriptExists(scriptId: string): Promise<boolean> {
   return !!script;
 }
 
-async function getOrCreateCanvas(scriptId: string) {
-  let canvas = await prisma.canvas.findUnique({
-    where: { scriptId },
-    include: {
-      nodes: { orderBy: { createdAt: 'asc' } },
-      edges: { orderBy: { createdAt: 'asc' } },
-    },
+async function validateCanvasExists(scriptId: string, canvasId: string): Promise<boolean> {
+  const canvas = await prisma.canvas.findFirst({
+    where: { id: canvasId, scriptId },
   });
-
-  if (!canvas) {
-    canvas = await prisma.canvas.create({
-      data: { scriptId },
-      include: {
-        nodes: { orderBy: { createdAt: 'asc' } },
-        edges: { orderBy: { createdAt: 'asc' } },
-      },
-    });
-  }
-
-  return canvas;
+  return !!canvas;
 }
 
-// ============ 画布 API ============
+// ============ 画布管理 API ============
 
-// GET /api/scripts/:scriptId/canvas - 获取画布数据
+// GET /api/scripts/:scriptId/canvases - 获取所有画布
 canvasRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { scriptId } = req.params;
@@ -43,14 +28,135 @@ canvasRouter.get('/', async (req: Request, res: Response, next: NextFunction) =>
       return res.status(404).json({ success: false, error: '剧本不存在' });
     }
 
-    const canvas = await getOrCreateCanvas(scriptId);
+    const canvases = await prisma.canvas.findMany({
+      where: { scriptId },
+      include: {
+        nodes: { orderBy: { createdAt: 'asc' } },
+        edges: { orderBy: { createdAt: 'asc' } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    res.json({ success: true, data: { canvases } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/scripts/:scriptId/canvases/:canvasId - 获取单个画布
+canvasRouter.get('/:canvasId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId, canvasId } = req.params;
+    if (!(await validateScriptExists(scriptId))) {
+      return res.status(404).json({ success: false, error: '剧本不存在' });
+    }
+
+    const canvas = await prisma.canvas.findFirst({
+      where: { id: canvasId, scriptId },
+      include: {
+        nodes: { orderBy: { createdAt: 'asc' } },
+        edges: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+
+    if (!canvas) {
+      return res.status(404).json({ success: false, error: '画布不存在' });
+    }
+
     res.json({ success: true, data: { canvas } });
   } catch (error) {
     next(error);
   }
 });
 
-// PUT /api/scripts/:scriptId/canvas/viewport - 更新视口
+// POST /api/scripts/:scriptId/canvases - 创建画布
+const createCanvasSchema = z.object({
+  name: z.string().min(1).max(100),
+});
+
+canvasRouter.post('/', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId } = req.params;
+    if (!(await validateScriptExists(scriptId))) {
+      return res.status(404).json({ success: false, error: '剧本不存在' });
+    }
+
+    const { name } = createCanvasSchema.parse(req.body);
+
+    const canvas = await prisma.canvas.create({
+      data: {
+        scriptId,
+        name,
+      },
+      include: {
+        nodes: { orderBy: { createdAt: 'asc' } },
+        edges: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+
+    res.json({ success: true, data: { canvas } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /api/scripts/:scriptId/canvases/:canvasId - 重命名画布
+const renameCanvasSchema = z.object({
+  name: z.string().min(1).max(100),
+});
+
+canvasRouter.patch('/:canvasId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId, canvasId } = req.params;
+    if (!(await validateScriptExists(scriptId))) {
+      return res.status(404).json({ success: false, error: '剧本不存在' });
+    }
+
+    if (!(await validateCanvasExists(scriptId, canvasId))) {
+      return res.status(404).json({ success: false, error: '画布不存在' });
+    }
+
+    const { name } = renameCanvasSchema.parse(req.body);
+
+    const canvas = await prisma.canvas.update({
+      where: { id: canvasId },
+      data: { name },
+    });
+
+    res.json({ success: true, data: { canvas } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/scripts/:scriptId/canvases/:canvasId - 删除画布
+canvasRouter.delete('/:canvasId', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { scriptId, canvasId } = req.params;
+    if (!(await validateScriptExists(scriptId))) {
+      return res.status(404).json({ success: false, error: '剧本不存在' });
+    }
+
+    if (!(await validateCanvasExists(scriptId, canvasId))) {
+      return res.status(404).json({ success: false, error: '画布不存在' });
+    }
+
+    // 检查是否至少保留一个画布
+    const canvasCount = await prisma.canvas.count({ where: { scriptId } });
+    if (canvasCount <= 1) {
+      return res.status(400).json({ success: false, error: '至少需要保留一个画布' });
+    }
+
+    // 删除画布（关联的节点和边会通过 onDelete: Cascade 自动删除）
+    await prisma.canvas.delete({ where: { id: canvasId } });
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/scripts/:scriptId/canvases/:canvasId/viewport - 更新视口
 const updateViewportSchema = z.object({
   viewport: z.object({
     x: z.number(),
@@ -59,18 +165,21 @@ const updateViewportSchema = z.object({
   }),
 });
 
-canvasRouter.put('/viewport', async (req: Request, res: Response, next: NextFunction) => {
+canvasRouter.put('/:canvasId/viewport', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { scriptId } = req.params;
+    const { scriptId, canvasId } = req.params;
     if (!(await validateScriptExists(scriptId))) {
       return res.status(404).json({ success: false, error: '剧本不存在' });
     }
 
+    if (!(await validateCanvasExists(scriptId, canvasId))) {
+      return res.status(404).json({ success: false, error: '画布不存在' });
+    }
+
     const { viewport } = updateViewportSchema.parse(req.body);
-    const canvas = await getOrCreateCanvas(scriptId);
 
     const updated = await prisma.canvas.update({
-      where: { id: canvas.id },
+      where: { id: canvasId },
       data: { viewport },
     });
 
@@ -82,7 +191,7 @@ canvasRouter.put('/viewport', async (req: Request, res: Response, next: NextFunc
 
 // ============ 节点 API ============
 
-// POST /api/scripts/:scriptId/canvas/nodes - 创建节点
+// POST /api/scripts/:scriptId/canvases/:canvasId/nodes - 创建节点
 const createNodeSchema = z.object({
   type: z.enum(['generator', 'input']),
   positionX: z.number(),
@@ -90,19 +199,22 @@ const createNodeSchema = z.object({
   label: z.string().optional(),
 });
 
-canvasRouter.post('/nodes', async (req: Request, res: Response, next: NextFunction) => {
+canvasRouter.post('/:canvasId/nodes', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { scriptId } = req.params;
+    const { scriptId, canvasId } = req.params;
     if (!(await validateScriptExists(scriptId))) {
       return res.status(404).json({ success: false, error: '剧本不存在' });
     }
 
+    if (!(await validateCanvasExists(scriptId, canvasId))) {
+      return res.status(404).json({ success: false, error: '画布不存在' });
+    }
+
     const data = createNodeSchema.parse(req.body);
-    const canvas = await getOrCreateCanvas(scriptId);
 
     const node = await prisma.canvasNode.create({
       data: {
-        canvasId: canvas.id,
+        canvasId,
         type: data.type,
         positionX: data.positionX,
         positionY: data.positionY,
@@ -116,7 +228,7 @@ canvasRouter.post('/nodes', async (req: Request, res: Response, next: NextFuncti
   }
 });
 
-// PATCH /api/scripts/:scriptId/canvas/nodes/:nodeId - 更新节点
+// PATCH /api/scripts/:scriptId/canvases/:canvasId/nodes/:nodeId - 更新节点
 const updateNodeSchema = z.object({
   positionX: z.number().optional(),
   positionY: z.number().optional(),
@@ -131,16 +243,19 @@ const updateNodeSchema = z.object({
   failReason: z.string().nullable().optional(),
 });
 
-canvasRouter.patch('/nodes/:nodeId', async (req: Request, res: Response, next: NextFunction) => {
+canvasRouter.patch('/:canvasId/nodes/:nodeId', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { scriptId, nodeId } = req.params;
+    const { scriptId, canvasId, nodeId } = req.params;
     if (!(await validateScriptExists(scriptId))) {
       return res.status(404).json({ success: false, error: '剧本不存在' });
     }
 
-    const canvas = await getOrCreateCanvas(scriptId);
+    if (!(await validateCanvasExists(scriptId, canvasId))) {
+      return res.status(404).json({ success: false, error: '画布不存在' });
+    }
+
     const existingNode = await prisma.canvasNode.findFirst({
-      where: { id: nodeId, canvasId: canvas.id },
+      where: { id: nodeId, canvasId },
     });
 
     if (!existingNode) {
@@ -159,17 +274,20 @@ canvasRouter.patch('/nodes/:nodeId', async (req: Request, res: Response, next: N
   }
 });
 
-// DELETE /api/scripts/:scriptId/canvas/nodes/:nodeId - 删除节点
-canvasRouter.delete('/nodes/:nodeId', async (req: Request, res: Response, next: NextFunction) => {
+// DELETE /api/scripts/:scriptId/canvases/:canvasId/nodes/:nodeId - 删除节点
+canvasRouter.delete('/:canvasId/nodes/:nodeId', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { scriptId, nodeId } = req.params;
+    const { scriptId, canvasId, nodeId } = req.params;
     if (!(await validateScriptExists(scriptId))) {
       return res.status(404).json({ success: false, error: '剧本不存在' });
     }
 
-    const canvas = await getOrCreateCanvas(scriptId);
+    if (!(await validateCanvasExists(scriptId, canvasId))) {
+      return res.status(404).json({ success: false, error: '画布不存在' });
+    }
+
     const existingNode = await prisma.canvasNode.findFirst({
-      where: { id: nodeId, canvasId: canvas.id },
+      where: { id: nodeId, canvasId },
     });
 
     if (!existingNode) {
@@ -187,26 +305,29 @@ canvasRouter.delete('/nodes/:nodeId', async (req: Request, res: Response, next: 
 
 // ============ 连接 API ============
 
-// POST /api/scripts/:scriptId/canvas/edges - 创建连接
+// POST /api/scripts/:scriptId/canvases/:canvasId/edges - 创建连接
 const createEdgeSchema = z.object({
   sourceNodeId: z.string(),
   targetNodeId: z.string(),
 });
 
-canvasRouter.post('/edges', async (req: Request, res: Response, next: NextFunction) => {
+canvasRouter.post('/:canvasId/edges', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { scriptId } = req.params;
+    const { scriptId, canvasId } = req.params;
     if (!(await validateScriptExists(scriptId))) {
       return res.status(404).json({ success: false, error: '剧本不存在' });
     }
 
+    if (!(await validateCanvasExists(scriptId, canvasId))) {
+      return res.status(404).json({ success: false, error: '画布不存在' });
+    }
+
     const { sourceNodeId, targetNodeId } = createEdgeSchema.parse(req.body);
-    const canvas = await getOrCreateCanvas(scriptId);
 
     // 验证源节点和目标节点存在
     const [sourceNode, targetNode] = await Promise.all([
-      prisma.canvasNode.findFirst({ where: { id: sourceNodeId, canvasId: canvas.id } }),
-      prisma.canvasNode.findFirst({ where: { id: targetNodeId, canvasId: canvas.id } }),
+      prisma.canvasNode.findFirst({ where: { id: sourceNodeId, canvasId } }),
+      prisma.canvasNode.findFirst({ where: { id: targetNodeId, canvasId } }),
     ]);
 
     if (!sourceNode) {
@@ -227,7 +348,7 @@ canvasRouter.post('/edges', async (req: Request, res: Response, next: NextFuncti
 
     const edge = await prisma.canvasEdge.create({
       data: {
-        canvasId: canvas.id,
+        canvasId,
         sourceNodeId,
         targetNodeId,
       },
@@ -239,17 +360,20 @@ canvasRouter.post('/edges', async (req: Request, res: Response, next: NextFuncti
   }
 });
 
-// DELETE /api/scripts/:scriptId/canvas/edges/:edgeId - 删除连接
-canvasRouter.delete('/edges/:edgeId', async (req: Request, res: Response, next: NextFunction) => {
+// DELETE /api/scripts/:scriptId/canvases/:canvasId/edges/:edgeId - 删除连接
+canvasRouter.delete('/:canvasId/edges/:edgeId', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { scriptId, edgeId } = req.params;
+    const { scriptId, canvasId, edgeId } = req.params;
     if (!(await validateScriptExists(scriptId))) {
       return res.status(404).json({ success: false, error: '剧本不存在' });
     }
 
-    const canvas = await getOrCreateCanvas(scriptId);
+    if (!(await validateCanvasExists(scriptId, canvasId))) {
+      return res.status(404).json({ success: false, error: '画布不存在' });
+    }
+
     const existingEdge = await prisma.canvasEdge.findFirst({
-      where: { id: edgeId, canvasId: canvas.id },
+      where: { id: edgeId, canvasId },
     });
 
     if (!existingEdge) {
