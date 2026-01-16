@@ -15,6 +15,8 @@ import { scriptsRouter } from './routes/scripts.js';
 import { authRouter } from './routes/auth.js';
 import { assetsRouter } from './routes/assets.js';
 import { charactersRouter } from './routes/characters.js';
+import { canvasRouter } from './routes/canvas.js';
+import { assetCategoriesRouter, savedAssetsRouter } from './routes/assetCategories.js';
 import { resumePendingPolls, stopAllPolling } from './lib/videoStatusPoller.js';
 
 const app = express();
@@ -66,6 +68,9 @@ app.use('/api/videos', authMiddleware, videosRouter);
 app.use('/api/scripts', authMiddleware, scriptsRouter);
 app.use('/api/scripts', authMiddleware, assetsRouter);
 app.use('/api/scripts/:scriptId/characters', authMiddleware, charactersRouter);
+app.use('/api/scripts/:scriptId/canvas', authMiddleware, canvasRouter);
+app.use('/api/scripts/:scriptId/asset-categories', authMiddleware, assetCategoriesRouter);
+app.use('/api/scripts/:scriptId/saved-assets', authMiddleware, savedAssetsRouter);
 
 // Error handling
 app.use(errorHandler);

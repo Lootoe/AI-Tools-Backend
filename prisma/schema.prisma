@@ -195,6 +195,97 @@ model ImageVariant {
   @@map("image_variants")
 }
 
+// 画布（每个剧本一个）
+model Canvas {
+  id        String   @id @default(cuid())
+  scriptId  String   @unique
+  viewport  Json?    // { x, y, zoom } 画布视口状态
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nodes CanvasNode[]
+  edges CanvasEdge[]
+
+  @@map("canvases")
+}
+
+// 画布节点
+model CanvasNode {
+  id         String   @id @default(cuid())
+  canvasId   String
+  type       String   // generator | input
+  positionX  Float    // 节点X坐标
+  positionY  Float    // 节点Y坐标
+  // 节点数据
+  label      String?  // 节点标签/名称
+  model      String?  // AI模型（生成节点用）
+  prompt     String?  // 提示词（生成节点用）
+  aspectRatio String? // 图片比例
+  imageSize  String?  // 图片质量 1K | 2K
+  imageUrl   String?  // 生成的图片URL / 上传的图片URL
+  status     String   @default("idle") // idle | generating | completed | failed
+  progress   String?  // 生成进度
+  failReason String?  // 失败原因
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  canvas      Canvas       @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  sourceEdges CanvasEdge[] @relation("SourceNode")
+  targetEdges CanvasEdge[] @relation("TargetNode")
+
+  @@index([canvasId])
+  @@map("canvas_nodes")
+}
+
+// 画布连接
+model CanvasEdge {
+  id           String   @id @default(cuid())
+  canvasId     String
+  sourceNodeId String
+  targetNodeId String
+  createdAt    DateTime @default(now())
+
+  canvas     Canvas     @relation(fields: [canvasId], references: [id], onDelete: Cascade)
+  sourceNode CanvasNode @relation("SourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode CanvasNode @relation("TargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceNodeId, targetNodeId])
+  @@index([canvasId])
+  @@map("canvas_edges")
+}
+
+// 资产分类（每个剧本独立）
+model AssetCategory {
+  id        String   @id @default(cuid())
+  scriptId  String
+  name      String
+  sortOrder Int      @default(0)
+  isDefault Boolean  @default(false) // 是否为预设分类
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  savedAssets SavedAsset[]
+
+  @@index([scriptId])
+  @@map("asset_categories")
+}
+
+// 已保存的资产
+model SavedAsset {
+  id           String   @id @default(cuid())
+  categoryId   String
+  imageUrl     String
+  thumbnailUrl String?
+  name         String?
+  sourceNodeId String?  // 来源节点ID
+  createdAt    DateTime @default(now())
+
+  category AssetCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([categoryId])
+  @@map("saved_assets")
+}
+
 // Sora2角色
 model Character {
   id                    String   @id @default(cuid())
