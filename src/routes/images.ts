@@ -37,6 +37,12 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
     try {
         const { assetId, description, model, referenceImageUrls, aspectRatio, imageSize } = assetDesignSchema.parse(req.body);
 
+        // 检查是否是真实的 Asset（用于资产工作区）还是 CanvasNode（用于画布工作区）
+        const asset = await prisma.asset.findUnique({
+            where: { id: assetId },
+        });
+        const isRealAsset = !!asset;
+
         // 计算代币消耗并扣除
         tokenCost = getImageTokenCost(model);
         const deductResult = await deductBalance(userId, tokenCost, '生成资产设计稿');
@@ -45,11 +51,13 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
         }
         deducted = true;
 
-        // 更新资产状态为 generating
-        await prisma.asset.update({
-            where: { id: assetId },
-            data: { status: 'generating' },
-        });
+        // 如果是真实的资产，更新状态为 generating
+        if (isRealAsset) {
+            await prisma.asset.update({
+                where: { id: assetId },
+                data: { status: 'generating' },
+            });
+        }
 
         // 直接使用用户输入的描述
         const fullPrompt = description.trim();
@@ -99,20 +107,25 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
         // 生成成功，更新数据库
         const imageUrl = response.data?.[0]?.url;
         if (imageUrl) {
-            await prisma.asset.update({
-                where: { id: assetId },
-                data: {
-                    designImageUrl: imageUrl,
-                    thumbnailUrl: imageUrl,
-                    status: 'completed',
-                },
-            });
+            // 如果是真实的资产，更新资产记录
+            if (isRealAsset) {
+                await prisma.asset.update({
+                    where: { id: assetId },
+                    data: {
+                        designImageUrl: imageUrl,
+                        thumbnailUrl: imageUrl,
+                        status: 'completed',
+                    },
+                });
+            }
         } else {
             // 没有返回图片，标记失败并返还代币
-            await prisma.asset.update({
-                where: { id: assetId },
-                data: { status: 'failed' },
-            });
+            if (isRealAsset) {
+                await prisma.asset.update({
+                    where: { id: assetId },
+                    data: { status: 'failed' },
+                });
+            }
             if (deducted) {
                 await refundBalance(userId, tokenCost, '资产设计稿生成失败，代币已返还');
             }
