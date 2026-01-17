@@ -134,23 +134,6 @@ model StoryboardVariant {
   @@map("storyboard_variants")
 }
 
-// 统一资产模型
-model Asset {
-  id                 String   @id @default(cuid())
-  scriptId           String
-  name               String
-  description        String   // 资产设定/信息
-  designImageUrl     String?  // 设计稿图片URL
-  thumbnailUrl       String?  // 缩略图
-  referenceImageUrls String[] // 参考图URL数组
-  status             String   @default("pending") // pending | generating | completed | failed
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  @@index([scriptId])
-  @@map("assets")
-}
-
 // 画布（每个剧本可以有多个）
 model Canvas {
   id        String   @id @default(cuid())

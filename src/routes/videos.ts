@@ -538,11 +538,11 @@ videosRouter.post('/register-sora-character', async (req: AuthRequest, res: Resp
       return res.status(400).json({ error: '角色尚未生成视频，无法注册' });
     }
 
-    if (character.soraCharacterId) {
-      return res.status(400).json({ error: '角色已注册' });
-    }
-
+    // 支持重新注册：即使已有 soraCharacterId，也允许覆盖注册
     console.log('\n========== 注册 Sora2 角色 ==========');
+    if (character.soraCharacterId) {
+      console.log('检测到已注册角色，将覆盖注册信息');
+    }
     console.log('角色ID:', characterId);
     console.log('任务ID:', character.taskId);
     console.log('视频URL:', character.videoUrl);

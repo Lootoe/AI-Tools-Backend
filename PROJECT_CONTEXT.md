@@ -133,10 +133,10 @@ AI-Tools-Backend/
 │   ├── routes/               # API 路由
 │   │   ├── auth.ts           # 认证（注册/登录/验证码）
 │   │   ├── scripts.ts        # 剧本/剧集/分镜/副本 CRUD
-│   │   ├── images.ts         # 图片生成（资产设计稿、分镜图）
+│   │   ├── images.ts         # 图片生成（画布节点）
 │   │   ├── videos.ts         # 视频生成（Sora2 API）
-│   │   ├── assets.ts         # 资产管理
 │   │   ├── characters.ts     # 角色管理
+│   │   ├── assetCategories.ts # 资产仓库管理
 │   │   └── upload.ts         # 文件上传（ImgBB）
 │   ├── lib/                  # 工具库
 │   │   ├── prisma.ts         # Prisma 客户端
@@ -276,10 +276,11 @@ VerificationCode (邮箱验证码)
 ### 5.6 图片生成 `/api/images`
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/asset-design` | 生成资产设计稿（用于画布节点） |
+| POST | `/asset-design` | 生成画布节点图片（用于画布工作区） |
 | POST | `/edits` | 编辑现有图片 |
 
 > 更新于 2026-01-16：删除 `/storyboard-image` 分镜图生成接口
+> 更新于 2026-01-17：简化 `/asset-design` 接口，移除 Asset 表支持，专注于画布节点图片生成
 
 ### 5.7 视频生成 `/api/videos`
 | 方法 | 路径 | 说明 |
@@ -295,15 +296,7 @@ VerificationCode (邮箱验证码)
 
 > 更新于 2026-01-13：新增 `/register-sora-character` 角色注册接口
 
-### 5.8 资产 `/api/scripts/:scriptId/assets`
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/` | 获取所有资产 |
-| POST | `/` | 创建资产 |
-| PATCH | `/:assetId` | 更新资产 |
-| DELETE | `/:assetId` | 删除资产 |
-
-### 5.9 角色 `/api/scripts/:scriptId/characters`
+### 5.8 角色 `/api/scripts/:scriptId/characters`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | 获取所有角色 |
@@ -313,7 +306,7 @@ VerificationCode (邮箱验证码)
 
 > 更新于 2026-01-12：新增角色管理 API
 
-### 5.10 画布 `/api/scripts/:scriptId/canvases`
+### 5.9 画布 `/api/scripts/:scriptId/canvases`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/` | 获取所有画布 |
@@ -329,6 +322,15 @@ VerificationCode (邮箱验证码)
 | DELETE | `/:canvasId/edges/:edgeId` | 删除连接 |
 
 > 更新于 2026-01-17：新增多画布管理 API，所有操作需要 canvasId 参数
+
+### 5.10 资产仓库 `/api/scripts/:scriptId/asset-categories`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/` | 获取所有分类 |
+| POST | `/` | 创建分类 |
+| DELETE | `/:categoryId` | 删除分类 |
+| GET | `/:categoryId/assets` | 获取分类下的资产 |
+| POST | `/:categoryId/assets` | 保存资产到分类 |
 
 ### 5.11 上传 `/api/upload`
 | 方法 | 路径 | 说明 |
@@ -393,11 +395,14 @@ TOKEN_COSTS = {
 
 ### 6.6 图片生成流程
 ```
-1. 前端调用 POST /api/images/asset-design 或 /storyboard-image
+1. 前端调用 POST /api/images/asset-design
 2. 后端扣除代币
-3. 后端调用 AI API 生成图片
-4. 成功：保存 imageUrl；失败：退款
+3. 后端更新 CanvasNode 状态为 generating
+4. 后端调用 AI API 生成图片
+5. 成功：更新 CanvasNode 的 imageUrl 和 status；失败：退款
 ```
+
+> 更新于 2026-01-17：简化图片生成流程，移除 Asset 表支持
 
 ---
 
@@ -490,3 +495,5 @@ VIDEO_MAX_POLL_DURATION=3600000
 | 1.0.5 | 2026-01-14 | 图片生成接口新增 imageSize 参数，支持 1K/2K 图片质量设置 |
 | 1.0.6 | 2026-01-15 | 删除提示词模板功能：移除 config 路由、prompts 配置文件、图片/视频生成的 promptTemplateId 参数 |
 | 1.1.1 | 2026-01-17 | 资产画布新增多画布支持：Canvas 模型添加 name 字段，移除 scriptId 唯一约束，每个剧本可创建多个独立画布；新增画布管理 API（创建、删除、重命名、切换），所有节点和连接操作需要 canvasId 参数；数据库迁移脚本已创建 |
+| 1.1.2 | 2026-01-17 | 简化图片生成接口：/api/images/asset-design 移除 Asset 表支持，专注于画布节点图片生成；删除 isRealAsset 判断逻辑，直接更新 CanvasNode 表；修复画布节点生成图片后无法保存到数据库的 bug |
+| 1.1.3 | 2026-01-17 | 彻底清理 Asset 遗留代码：删除 Asset 模型、assets.ts 路由文件、路由注册；更新文档移除 Asset API 说明；系统现在只使用 CanvasNode（画布节点）和 SavedAsset（资产仓库）两种资产概念 |

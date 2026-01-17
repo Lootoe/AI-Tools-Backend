@@ -14,20 +14,20 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
-// ============ 统一资产设计稿生成 ============
+// ============ 画布节点图片生成 ============
 
-// 资产设计稿生成请求验证
+// 画布节点图片生成请求验证
 const assetDesignSchema = z.object({
-    assetId: z.string().min(1, '资产ID不能为空'),
+    assetId: z.string().min(1, '节点ID不能为空'), // 实际上是 CanvasNode ID
     scriptId: z.string().min(1, '剧本ID不能为空'),
-    description: z.string().min(1, '资产描述不能为空'),
+    description: z.string().min(1, '描述不能为空'),
     model: z.string().default('nano-banana-2'),
     referenceImageUrls: z.array(z.string()).optional(), // 参考图URL数组
     aspectRatio: z.enum(['1:1', '4:3', '16:9']).default('16:9'),
     imageSize: z.enum(['1K', '2K']).default('1K'), // 图片质量
 });
 
-// 统一资产设计稿生成接口
+// 画布节点图片生成接口
 imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next: NextFunction) => {
     const startTime = Date.now();
     const userId = req.userId!;
@@ -37,12 +37,6 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
     try {
         const { assetId, description, model, referenceImageUrls, aspectRatio, imageSize } = assetDesignSchema.parse(req.body);
 
-        // 检查是否是真实的 Asset（用于资产工作区）还是 CanvasNode（用于画布工作区）
-        const asset = await prisma.asset.findUnique({
-            where: { id: assetId },
-        });
-        const isRealAsset = !!asset;
-
         // 计算代币消耗并扣除
         tokenCost = getImageTokenCost(model);
         const deductResult = await deductBalance(userId, tokenCost, '生成资产设计稿');
@@ -51,13 +45,11 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
         }
         deducted = true;
 
-        // 如果是真实的资产，更新状态为 generating
-        if (isRealAsset) {
-            await prisma.asset.update({
-                where: { id: assetId },
-                data: { status: 'generating' },
-            });
-        }
+        // 更新画布节点状态为 generating
+        await prisma.canvasNode.update({
+            where: { id: assetId },
+            data: { status: 'generating' },
+        }).catch(() => { }); // 忽略更新失败（节点可能不存在）
 
         // 直接使用用户输入的描述
         const fullPrompt = description.trim();
@@ -86,9 +78,9 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
             aiRequestParams.size = sizeMap[imageSize]?.[aspectRatio] || sizeMap['1K'][aspectRatio];
         }
 
-        console.log(`\n========== 资产设计稿生成请求 ==========`);
-        console.log('资产ID:', assetId);
-        console.log('资产描述:', description);
+        console.log(`\n========== 画布节点图片生成请求 ==========`);
+        console.log('节点ID:', assetId);
+        console.log('描述:', description);
         console.log('参考图数量:', referenceImageUrls?.length || 0);
         console.log('使用模型:', model);
         console.log('比例:', aspectRatio);
@@ -107,27 +99,23 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
         // 生成成功，更新数据库
         const imageUrl = response.data?.[0]?.url;
         if (imageUrl) {
-            // 如果是真实的资产，更新资产记录
-            if (isRealAsset) {
-                await prisma.asset.update({
-                    where: { id: assetId },
-                    data: {
-                        designImageUrl: imageUrl,
-                        thumbnailUrl: imageUrl,
-                        status: 'completed',
-                    },
-                });
-            }
+            // 更新画布节点
+            await prisma.canvasNode.update({
+                where: { id: assetId },
+                data: {
+                    imageUrl: imageUrl,
+                    status: 'completed',
+                },
+            }).catch(() => { }); // 忽略更新失败
         } else {
             // 没有返回图片，标记失败并返还代币
-            if (isRealAsset) {
-                await prisma.asset.update({
-                    where: { id: assetId },
-                    data: { status: 'failed' },
-                });
-            }
+            await prisma.canvasNode.update({
+                where: { id: assetId },
+                data: { status: 'failed' },
+            }).catch(() => { }); // 忽略更新失败
+
             if (deducted) {
-                await refundBalance(userId, tokenCost, '资产设计稿生成失败，代币已返还');
+                await refundBalance(userId, tokenCost, '图片生成失败，代币已返还');
             }
         }
 
@@ -143,17 +131,17 @@ imagesRouter.post('/asset-design', async (req: AuthRequest, res: Response, next:
         // 生成失败，更新数据库状态并返还代币
         const { assetId } = req.body || {};
         if (assetId) {
-            await prisma.asset.update({
+            await prisma.canvasNode.update({
                 where: { id: assetId },
                 data: { status: 'failed' },
             }).catch(() => { }); // 忽略更新失败
         }
         if (deducted) {
-            await refundBalance(userId, tokenCost, '资产设计稿生成失败，代币已返还');
+            await refundBalance(userId, tokenCost, '图片生成失败，代币已返还');
         }
 
         const duration = Date.now() - startTime;
-        console.error(`\n========== 资产设计稿生成错误 (${duration}ms) ==========`);
+        console.error(`\n========== 画布节点图片生成错误 (${duration}ms) ==========`);
         console.error('错误信息:', error);
         console.error('====================================================\n');
         next(error);
